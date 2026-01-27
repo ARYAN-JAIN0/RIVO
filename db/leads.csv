@@ -1,0 +1,72 @@
+id,name,email,company,industry,status,last_contacted,draft_email,confidence_score,review_status
+1,Amit Sharma,amit@testcorp.com,TestCorp,FinTech,New,,"Hi Amit,
+
+RevoAI can help TestCorp stay ahead with recent FinTech advancements. Would you like to discuss how we can support your team?
+
+Kindly schedule a call.
+
+Best regards,
+Aryan Jain
+Sales Engineer, RevoAI
+aryan@revoai.com
+",0.0,STRUCTURAL_FAILED
+2,Riya Mehta,riya@cloudnova.ai,CloudNova,SaaS,New,,"Hi Riya,
+
+CloudNova's recent updates align with industry trends in SaaS. Let’s discuss how we can enhance your operations.
+
+Schedule a 15-minute call?
+
+Best regards,
+Aryan Jain
+Sales Engineer, RevoAI
+aryan@revoai.com
+",0.0,STRUCTURAL_FAILED
+3,Karan Patel,karan@opsly.io,Opsly,Operations,New,,"Hi Karan,
+
+I noticed your recent focus on Operations efficiency. Our solution can help streamline processes at Opsly.
+
+Can we chat for 15 minutes to explore how? 
+
+[Signature]
+
+Best regards,
+Aryan Jain
+Sales Engineer, RevoAI
+aryan@revoai.com
+",0.0,STRUCTURAL_FAILED
+4,Neha Verma,karan@payzen.com,PayZen,FinTech,New,,"Hi Neha,
+
+RevoAI can help PayZen stay ahead with our latest insights in FinTech. Would love to chat for 15 minutes?
+
+[Signature]
+
+Best regards,
+Aryan Jain
+Sales Engineer, RevoAI
+aryan@revoai.com
+",0.0,STRUCTURAL_FAILED
+5,Rohit Khanna,rohot@scalestack.io,ScaleStack,SaaS,New,,"Hi Rohit,
+
+At RevoAI, we're tracking recent developments in SaaS. Our solution can help ScaleStack streamline operations.
+
+Would love to chat for 15 minutes about how we could assist?
+
+Sincerely,  
+[Signature]
+
+Best regards,
+Aryan Jain
+Sales Engineer, RevoAI
+aryan@revoai.com
+",0.0,STRUCTURAL_FAILED
+6,Ananya Iyer,anaya@lowops.in,FlowOps,Operations,New,,"Hi Ananya,
+
+I noticed your interest in recent developments in Operations. Our tool can help streamline processes at FlowOps. Would you like to chat for 15 minutes?
+
+Thank you,
+
+Best regards,
+Aryan Jain
+Sales Engineer, RevoAI
+aryan@revoai.com
+",0.0,STRUCTURAL_FAILED
