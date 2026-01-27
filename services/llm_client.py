@@ -1,17 +1,23 @@
 import requests
+import json
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "llama3.1"
+MODEL_NAME = "qwen2.5:7b"
 
-def call_llm(prompt: str) -> str:
+def call_llm(prompt: str, json_mode: bool = False) -> str:
     payload = {
         "model": MODEL_NAME,
         "prompt": prompt,
         "stream": False,
-        "format": "json"
     }
 
-    response = requests.post(OLLAMA_URL, json=payload)
-    response.raise_for_status()
+    if json_mode:
+        payload["format"] = "json"
 
-    return response.json()["response"]
+    try:
+        response = requests.post(OLLAMA_URL, json=payload)
+        response.raise_for_status()
+        return response.json()["response"]
+    except requests.exceptions.RequestException as e:
+        print(f"❌ LLM Call Failed: {e}")
+        return ""
