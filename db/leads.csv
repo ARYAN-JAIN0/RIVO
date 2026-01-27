@@ -1,72 +1,43 @@
 id,name,email,company,industry,status,last_contacted,draft_email,confidence_score,review_status
-1,Amit Sharma,amit@testcorp.com,TestCorp,FinTech,New,,"Hi Amit,
-
-RevoAI can help TestCorp stay ahead with recent FinTech advancements. Would you like to discuss how we can support your team?
-
-Kindly schedule a call.
+1,Amit Sharma,amit@testcorp.com,TestCorp,FinTech,New,,"Amit, I came across TestCorp and noticed your company is at the forefront of FinTech innovations. Our RevoAI platform can help you streamline financial operations with automation and data insights, saving time and resources. Would you be open to a quick 15-minute call to discuss how we can support your goals?
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
 aryan@revoai.com
-",0.0,STRUCTURAL_FAILED
-2,Riya Mehta,riya@cloudnova.ai,CloudNova,SaaS,New,,"Hi Riya,
-
-CloudNova's recent updates align with industry trends in SaaS. Let’s discuss how we can enhance your operations.
-
-Schedule a 15-minute call?
+",83.0,Pending
+2,Riya Mehta,riya@cloudnova.ai,CloudNova,SaaS,New,,"Hi Riya, I came across CloudNova and was impressed by your recent developments in SaaS. At RevoAI, we help companies like yours optimize their workflows with AI-driven solutions that boost productivity and reduce costs. Would you be open to a quick 15-minute call to explore how our technology can support your business?
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
 aryan@revoai.com
-",0.0,STRUCTURAL_FAILED
-3,Karan Patel,karan@opsly.io,Opsly,Operations,New,,"Hi Karan,
-
-I noticed your recent focus on Operations efficiency. Our solution can help streamline processes at Opsly.
-
-Can we chat for 15 minutes to explore how? 
-
-[Signature]
+",0.0,Pending
+3,Karan Patel,karan@opsly.io,Opsly,Operations,New,,"Karan, I came across Opsly and noticed your recent advancements in Operations are impressive. At RevoAI, our SaaS platform helps streamline workflows, reducing manual errors by up to 30%. Would you be open to a quick 15-minute call to explore how we can support your team's efforts?
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
 aryan@revoai.com
-",0.0,STRUCTURAL_FAILED
-4,Neha Verma,karan@payzen.com,PayZen,FinTech,New,,"Hi Neha,
-
-RevoAI can help PayZen stay ahead with our latest insights in FinTech. Would love to chat for 15 minutes?
-
-[Signature]
+",0.0,Pending
+4,Neha Verma,karan@payzen.com,PayZen,FinTech,New,,"Hi Neha, I came across PayZen's recent advancements in FinTech and was impressed by their innovative approach. Our B2B SaaS platform, RevoAI, helps FinTech companies like yours streamline operations with AI-driven insights. Would you be open to a 15-minute conversation about how we can support your team?
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
 aryan@revoai.com
-",0.0,STRUCTURAL_FAILED
-5,Rohit Khanna,rohot@scalestack.io,ScaleStack,SaaS,New,,"Hi Rohit,
-
-At RevoAI, we're tracking recent developments in SaaS. Our solution can help ScaleStack streamline operations.
-
-Would love to chat for 15 minutes about how we could assist?
-
-Sincerely,  
-[Signature]
+",0.0,Pending
+5,Rohit Khanna,rohot@scalestack.io,ScaleStack,SaaS,New,,"Hi Rohit, I came across ScaleStack's work on AI-powered infrastructure optimization and was impressed by the recent advancements in SaaS innovation. Our platform at RevoAI helps businesses like yours streamline their operations through data-driven insights. Would you be open to a quick 15-minute call to explore how we can support your team?
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
 aryan@revoai.com
-",0.0,STRUCTURAL_FAILED
-6,Ananya Iyer,anaya@lowops.in,FlowOps,Operations,New,,"Hi Ananya,
-
-I noticed your interest in recent developments in Operations. Our tool can help streamline processes at FlowOps. Would you like to chat for 15 minutes?
-
-Thank you,
+",0.0,Pending
+6,Ananya Iyer,anaya@lowops.in,FlowOps,Operations,New,,"Hi Ananya, I came across FlowOps and noticed their efforts in streamlining operations with recent advancements in automation. Our B2B SaaS platform, RevoAI, offers a user-friendly interface for workflow optimization that aligns with your company's goals. Would you be open to discussing how our solution can support FlowOps' operational improvements?
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
 aryan@revoai.com
-",0.0,STRUCTURAL_FAILED
+",0.0,Pending

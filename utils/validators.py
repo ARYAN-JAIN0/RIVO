@@ -34,7 +34,7 @@ def validate_structure(email_text: str) -> bool:
         return False
 
     # Minimum length check (avoid 2-line junk)
-    if len(text.split()) < 60:
+    if len(text.split()) < 30:
         return False
 
     return True

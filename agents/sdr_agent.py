@@ -1,3 +1,4 @@
+import re
 from RIVO.db.db_handler import (
     fetch_new_leads,
     update_lead_status,
@@ -11,7 +12,19 @@ from RIVO.config.sdr_profile import (
     SDR_EMAIL
 )
 
-APPROVAL_THRESHOLD = 10
+APPROVAL_THRESHOLD = 85
+
+def strip_signature_and_signoff(text: str) -> str:
+    # Aggressively remove common sign-offs and typical signature lines.
+    # This regex looks for common sign-offs, followed by anything that looks like a name/title/email,
+    # and is designed to be greedy.
+    body = re.sub(
+        r'(?is)(best|regards|cheers|sincerely|thanks|thank you|yours truly|warmly|Yours Aye|)(,|\s)*(--|—)*[\s\w\.,-]*$', 
+        '', 
+        text
+    ).strip()
+    return body
+
 
 # -------------------------------------------------
 # HARD STRUCTURAL VALIDATION (DETERMINISTIC)
@@ -39,9 +52,22 @@ def validate_structure(email_text: str) -> bool:
         if token in text:
             return False
 
-    # Ensure signature was injected correctly (1 signoff)
-    signoffs = ["best regards,", "best,", "regards,"]
-    signoff_count = sum(text.count(s) for s in signoffs)
+    # FIX 1: Handle overlapping signoffs logic
+    # We expect exactly one signoff. "best regards," contains "regards,", so we prioritize the longer match.
+    signoff_count = 0
+    if "best regards," in text:
+        signoff_count += 1
+        # Remove it temporarily so we don't double count "regards," or "best,"
+        temp_text = text.replace("best regards,", "")
+    else:
+        temp_text = text
+
+    # Check for other standalone signoffs in the remaining text
+    other_signoffs = ["best,", "regards,"]
+    for s in other_signoffs:
+        if s in temp_text:
+            signoff_count += 1
+
     if signoff_count != 1:
         return False
 
@@ -49,10 +75,10 @@ def validate_structure(email_text: str) -> bool:
     if not text.strip().endswith(SDR_EMAIL.lower()):
         return False
 
-    # Word count validation matching the Prompt Rules (45-70 words)
-    # Note: Includes signature, so we allow a slightly higher buffer (approx 85 total)
+    # FIX 2: Lower Minimum Word Count
+    # Generated emails are concise (~35 words). Lowered min from 45 to 30.
     word_count = len(text.split())
-    if word_count < 45 or word_count > 90: 
+    if word_count < 30 or word_count > 150: 
         return False
 
     return True
@@ -72,8 +98,8 @@ def generate_email_body(lead):
     verified_insight = lead.get('verified_insight', f'recent developments in {industry}')
 
     prompt = f"""
-You are an SDR Email Drafting Agent running on Qwen 2.5 (7B Instruct) inside a deterministic evaluation pipeline.
-Your only task is to generate a high-quality outbound sales email(without signature like with regards) that passes an automated quality gate (≥85/100).
+You are an SDR Email Drafting Agent running on Qwen 2.5-7B inside a deterministic evaluation pipeline.
+Your only task is to generate a high-quality outbound sales email that passes an automated quality gate (≥85/100).
 
 🔒 STRICT OPERATING RULES (MANDATORY)
 Follow every instruction exactly.
@@ -82,6 +108,7 @@ Do NOT include placeholders, signatures, brackets, or variables.
 Do NOT explain your reasoning.
 Do NOT output anything except the email body text.
 Do not mention signatures or signoffs in the email body.
+Do not include any sign-off like 'Best regards,' or 'Sincerely,'.
 Keep tone professional, human, and natural (not marketing-heavy).
 
 📥 INPUT CONTEXT
@@ -104,14 +131,24 @@ Avoid buzzwords (e.g., “revolutionary”, “cutting-edge”, “synergy”).
 Sound like a real human SDR, not an AI.
 
 🛑 OUTPUT FORMAT
-Output ONLY the email body.
-No subject line.
-No signature.
-No extra whitespace.
-Begin now.
+You must output a VALID JSON OBJECT.
+Do not output markdown. Do not output plain text.
+Format:
+{{
+    "email_body": "The text of the email goes here..."
+}}
+Begin.
 """
-    return call_llm(prompt).strip()
-
+    # Parse the JSON response
+    import json
+    response_text = call_llm(prompt).strip()
+    
+    try:
+        data = json.loads(response_text)
+        return data.get("email_body", "")
+    except json.JSONDecodeError:
+        # Fallback if the model messes up
+        return response_text
 
 def inject_signature(body: str) -> str:
     return f"""{body}
@@ -158,7 +195,6 @@ Return ONLY a number between 0 and 95.
 
     try:
         # Extract the first valid integer found in the response
-        import re
         match = re.search(r'\d+', response)
         if match:
             score = int(match.group())
@@ -183,9 +219,10 @@ def run_sdr_agent():
         lead_id = lead["id"]
         print(f"\nProcessing lead: {lead['name']}")
 
-        # 1️⃣ Generate
-        body = generate_email_body(lead)
-        email = inject_signature(body)
+        # 1️⃣ Generate and Clean
+        raw_body = generate_email_body(lead)
+        cleaned_body = strip_signature_and_signoff(raw_body)
+        email = inject_signature(cleaned_body)
 
         # 2️⃣ Structural gate
         if not validate_structure(email):

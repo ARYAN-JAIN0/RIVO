@@ -1,13 +1,14 @@
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "qwen2.5:7b"
+MODEL_NAME = "llama3.1"
 
 def call_llm(prompt: str) -> str:
     payload = {
         "model": MODEL_NAME,
         "prompt": prompt,
-        "stream": False
+        "stream": False,
+        "format": "json"
     }
 
     response = requests.post(OLLAMA_URL, json=payload)
