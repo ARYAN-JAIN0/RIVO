@@ -58,4 +58,8 @@ def mark_review_decision(lead_id, decision, edited_email=None):
     if edited_email:
         df.loc[df["id"] == lead_id, "draft_email"] = edited_email
 
+    if decision == "Approved":
+        df.loc[df["id"] == lead_id, "status"] = "Contacted"
+        df.loc[df["id"] == lead_id, "last_contacted"] = datetime.now()
+        
     df.to_csv(LEADS_FILE, index=False)
