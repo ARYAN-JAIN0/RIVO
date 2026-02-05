@@ -1,5 +1,10 @@
 id,name,email,role,company,company_size,industry,verified_insight,negative_signals,status,last_contacted,draft_email,confidence_score,review_status
-201,Alice Wright,alice@cloudscale.io,CTO,CloudScale,1000+,SaaS,Migrating to new cloud stack and hiring engineers,,New,,,0.0,New
+201,Alice Wright,alice@cloudscale.io,CTO,CloudScale,1000+,SaaS,Migrating to new cloud stack and hiring engineers,,Contacted,2026-02-05,"Hi Alice, I noticed CloudScale is moving to a new cloud stack and growing your engineering team. RevoAI offers powerful analytics to streamline migrations and optimize performance. Would love to discuss how we can support your transition.
+
+Best regards,
+Aryan Jain
+Sales Engineer, RevoAI
+aryan@revoai.com",85.0,Approved
 202,Bob Smith,bob@downsize.com,VP HR,DownsizeCorp,Enterprise,Retail,Restructuring teams for efficiency,Recent massive layoffs reported,Skipped: Recent Layoffs detected,2026-02-05,,0.0,BLOCKED
 203,Charlie Davis,charlie@rival.inc,Head of Sales,RivalInc,Mid-Market,Tech,Looking for new sales tools,Signed contract with CompetitorX yesterday,Skipped: Competitor signed recently,2026-02-05,,0.0,BLOCKED
 204,Diana Prince,diana@housing.gov,Director,Dept of Housing,Government,Government Administration,Budget approved for Q4,,Skipped: High-Risk Sector (Gov/Edu),2026-02-05,,0.0,BLOCKED
@@ -7,15 +12,16 @@ id,name,email,role,company,company_size,industry,verified_insight,negative_signa
 206,Evan Lee,evan@tinyshop.net,Intern,TinyShop,1-10,Retail,Just browsing solutions,,Skipped: Low Signal (0),2026-02-05,,0.0,SKIPPED
 207,Fiona Gallagher,fiona@startupx.io,Founder,StartUpX,1-10,SaaS,Secured Series A funding and reviewing tech stack,,Skipped: Low Signal (45),2026-02-05,,0.0,SKIPPED
 208,George Martin,george@logistics.co,VP Engineering,OldReliable,Enterprise,Logistics,Aggressively hiring backend developers,,Skipped: Contacted 16 days ago (<30 limit),2026-02-05,,0.0,BLOCKED
-209,Hannah Montana,hannah@musicstream.com,CISO,MusicStream,Enterprise,Media,Implementing new security stack immediately,,Contacted,2026-02-05,"Hi Hannah, MusicStream’s growing content library requires a secure solution. Our RevoAI Security Stack provides immediate implementation for enhanced protection, ensuring your assets are safe. Let's discuss how we can help.
+209,Hannah Montana,hannah@musicstream.com,CISO,MusicStream,Enterprise,Media,Implementing new security stack immediately,,Contacted,2026-02-05,"Hi Hannah, 
+MusicStream’s growing content library requires robust security. Our RevoAI platform offers an immediate, scalable solution to enhance your protection. Let’s discuss how we can secure MediaStream today. 
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
-aryan@revoai.com",85.0,Approved
+aryan@revoai.com",0.0,Approved
 210,Ian Malcolm,ian@dinopark.com,IT Manager,DinoPark,Mid-Market,Entertainment,Looking for budget approval,,Skipped: Low Signal (25),2026-02-05,,0.0,SKIPPED
 211,Kara Danvers,kara@savethecat.org,Lead Organizer,SaveTheCat,50-100,Non-profit,Recruiting new volunteers,,Skipped: High-Risk Sector (Gov/Edu),2026-02-05,,0.0,BLOCKED
-212,Liam Neeson,liam@skillset.hr,Head of Talent,SkillSet,Mid-Market,HR Tech,Aggressively growing sales team,,Contacted,2026-02-05,"Hi Liam, as an advocate of efficient processes, I’m excited to introduce RevoAI. Our AI tools streamline your sales team’s growth by providing data-driven insights and personalized coaching. Let's discuss how we can boost your team’s performance together.
+212,Liam Neeson,liam@skillset.hr,Head of Talent,SkillSet,Mid-Market,HR Tech,Aggressively growing sales team,,Contacted,2026-02-05,"Hi Liam, As a trailblazer in your field, you understand the value of transformation. RevoAI's AI-driven HR tech rapidly scales your sales team while reducing costs. Let’s explore how we can collaborate to drive your growth.
 
 Best regards,
 Aryan Jain
@@ -23,7 +29,8 @@ Sales Engineer, RevoAI
 aryan@revoai.com",85.0,Approved
 213,Mona Lisa,mona@louvre.fr,Director,Louvre Museum,Enterprise,Art,Digitizing the collection,,Skipped: Low Signal (35),2026-02-05,,0.0,SKIPPED
 214,Nathan Drake,nathan@uncharted.com,CEO,Uncharted Ltd,1000+,Travel,Expanding into new global markets,,Contacted,2026-02-05,"Hi Nathan,
-RevoAI's SaaS offers cutting-edge language translation and market analysis tools ideal for expanding into new global markets. Let’s discuss how we can support Uncharted Ltd’s growth strategy. 
+I understand your goal of expanding into new global markets. RevoAI’s SaaS platform can provide you with the tools needed for seamless travel and logistics management. Let's discuss how we can support your growth. 
+
 
 Best regards,
 Aryan Jain
