@@ -1,5 +1,18 @@
 import streamlit as st
-from RIVO.db.db_handler import fetch_pending_reviews, mark_review_decision
+from pathlib import Path
+import sys
+
+# Ensure project root is importable when running `streamlit run app/review_dashboard.py`
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_DIR = str(Path(__file__).resolve().parent)
+project_root_str = str(PROJECT_ROOT)
+if SCRIPT_DIR in sys.path:
+    sys.path.remove(SCRIPT_DIR)
+if project_root_str in sys.path:
+    sys.path.remove(project_root_str)
+sys.path.insert(0, project_root_str)
+
+from db.db_handler import fetch_pending_reviews, mark_review_decision
 
 st.set_page_config(page_title="Revo – Human Review Panel", layout="wide")
 

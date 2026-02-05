@@ -3,14 +3,14 @@ import re
 from datetime import datetime
 import pandas as pd
 
-from RIVO.db.db_handler import (
+from db.db_handler import (
     fetch_new_leads,
     update_lead_status,
     save_draft,
     mark_review_decision
 )
-from RIVO.services.llm_client import call_llm
-from RIVO.config.sdr_profile import (
+from services.llm_client import call_llm
+from config.sdr_profile import (
     SDR_NAME,
     SDR_COMPANY,
     SDR_ROLE,
