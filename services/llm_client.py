@@ -15,9 +15,10 @@ def call_llm(prompt: str, json_mode: bool = False) -> str:
         payload["format"] = "json"
 
     try:
-        response = requests.post(OLLAMA_URL, json=payload)
+        response = requests.post(OLLAMA_URL, json=payload, timeout=30)
         response.raise_for_status()
-        return response.json()["response"]
-    except requests.exceptions.RequestException as e:
+        body = response.json()
+        return body.get("response", "")
+    except (requests.exceptions.RequestException, ValueError) as e:
         print(f"❌ LLM Call Failed: {e}")
         return ""

@@ -21,7 +21,7 @@ def fetch_new_leads():
 def update_lead_status(lead_id, new_status):
     df = pd.read_csv(LEADS_FILE)
     df.loc[df["id"] == lead_id, "status"] = new_status
-    df.loc[df["id"] == lead_id, "last_contacted"] = datetime.now()
+    df.loc[df["id"] == lead_id, "last_contacted"] = datetime.now().strftime("%Y-%m-%d")
     df.to_csv(LEADS_FILE, index=False)
 
 
@@ -60,6 +60,6 @@ def mark_review_decision(lead_id, decision, edited_email=None):
 
     if decision == "Approved":
         df.loc[df["id"] == lead_id, "status"] = "Contacted"
-        df.loc[df["id"] == lead_id, "last_contacted"] = datetime.now()
+        df.loc[df["id"] == lead_id, "last_contacted"] = datetime.now().strftime("%Y-%m-%d")
         
     df.to_csv(LEADS_FILE, index=False)
