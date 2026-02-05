@@ -3,14 +3,14 @@ import re
 from datetime import datetime
 import pandas as pd
 
-from RIVO.db.db_handler import (
+from db.db_handler import (
     fetch_new_leads,
     update_lead_status,
     save_draft,
     mark_review_decision
 )
-from RIVO.services.llm_client import call_llm
-from RIVO.config.sdr_profile import (
+from services.llm_client import call_llm
+from config.sdr_profile import (
     SDR_NAME,
     SDR_COMPANY,
     SDR_ROLE,
@@ -147,6 +147,21 @@ def validate_structure(email_text: str) -> bool:
 # 3. GENERATION (CHAIN-OF-THOUGHT)
 # -------------------------------------------------
 
+
+
+def build_fallback_email_body(lead) -> str:
+    """Deterministic fallback when LLM is unavailable or times out."""
+    name = safe_str(lead.get('name', 'there'))
+    company = safe_str(lead.get('company', 'your team'))
+    industry = safe_str(lead.get('industry', 'your industry'))
+    insight = safe_str(lead.get('verified_insight', 'recent operational changes'))
+
+    return (
+        f"Hi {name}, I noticed {company} is seeing {insight} in {industry}. "
+        f"We help teams shorten rollout time and improve pipeline visibility without adding overhead. "
+        f"Would you be open to a quick 15-minute call next week to compare approaches?"
+    )
+
 def generate_email_body(lead):
     name = safe_str(lead.get('name', 'Prospect'))
     company = safe_str(lead.get('company', 'your company'))
@@ -177,10 +192,15 @@ Format:
 """
     # Requires updated llm_client.py with json_mode support
     response_text = call_llm(prompt, json_mode=True).strip()
-    
+
+    if not response_text:
+        print("⚠️ Using deterministic fallback email body due to LLM timeout/unavailability.")
+        return build_fallback_email_body(lead)
+
     try:
         data = json.loads(response_text)
-        return data.get("email_body", "")
+        email_body = safe_str(data.get("email_body", ""))
+        return email_body or build_fallback_email_body(lead)
     except json.JSONDecodeError:
         return response_text
 
