@@ -16,6 +16,7 @@ BACKWARD COMPATIBILITY:
 import json
 import pandas as pd
 from datetime import datetime, timedelta
+from db.db_handler import _load_invoices_df
 
 from db.db_handler import (
     fetch_contracts_by_status,
@@ -226,7 +227,7 @@ def run_finance_agent():
     print(f"\n📋 Step 2: Processing overdue invoices...")
     
     # Fetch all sent invoices (could be paid, sent, or overdue)
-    all_invoices = pd.read_csv(BASE_DIR / "db" / "invoices.csv") if (BASE_DIR / "db" / "invoices.csv").exists() else pd.DataFrame()
+    all_invoices = _load_invoices_df()
     
     if all_invoices.empty:
         print("   No invoices to process.")

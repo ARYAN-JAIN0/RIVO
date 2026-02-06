@@ -206,8 +206,15 @@ def run_sales_agent():
     for _, lead in contacted_leads.iterrows():
         lead_id = lead["id"]
         name = str(lead.get('name', 'Prospect'))
-        company = str(lead.get('company', 'Company'))
-        
+        company = (
+           lead.get("company")
+           or lead.get("company_name")
+           or lead.get("account")
+         )
+
+        if not company:
+            raise ValueError(f"Missing company for lead {lead_id}")
+
         print(f"\n🔍 Qualifying Lead: {name} ({company})")
         
         # Step 1: Calculate BANT score
@@ -232,12 +239,13 @@ def run_sales_agent():
         # Step 4: Create deal
         deal_id = create_deal(
             lead_id=lead_id,
-            stage="Qualified",
-            qualification_score=qual_score,
-            deal_value=deal_value,
-            notes=notes
+            company=company,
+            acv=estimated_acv,
+            qualification_score=bant_score,
+            notes=qualification_notes,
+            stage="qualified"
         )
-        
+
         # Step 5: Auto-approval or human review
         if qual_score >= QUALIFICATION_THRESHOLD:
             print(f"✅ Auto-Approved (Score: {qual_score})")

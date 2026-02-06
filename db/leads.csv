@@ -1,39 +1,41 @@
-id,name,email,role,company,company_size,industry,verified_insight,negative_signals,status,last_contacted,draft_email,confidence_score,review_status
-201,Alice Wright,alice@cloudscale.io,CTO,CloudScale,1000+,SaaS,Migrating to new cloud stack and hiring engineers,,Contacted,2026-02-05,"Hi Alice, I noticed CloudScale is moving to a new cloud stack and growing your engineering team. RevoAI offers powerful analytics to streamline migrations and optimize performance. Would love to discuss how we can support your transition.
+id,name,email,role,company,company_size,industry,verified_insight,negative_signals,status,last_contacted,confidence_score,review_status,draft_message
+201,Alice Wright,alice@cloudscale.io,CTO,CloudScale,1000+,SaaS,Migrating to new cloud stack and hiring engineers,,Contacted,,0.0,STRUCTURAL_FAILED,"Hi Alice, I noticed CloudScale is moving to a new cloud stack and expanding engineering. RevoAI can help automate migrations and enhance developer productivity. Would love to discuss how we can support your transition. Best, [Your Name]
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
-aryan@revoai.com",85.0,Approved
-202,Bob Smith,bob@downsize.com,VP HR,DownsizeCorp,Enterprise,Retail,Restructuring teams for efficiency,Recent massive layoffs reported,Skipped: Recent Layoffs detected,2026-02-05,,0.0,BLOCKED
-203,Charlie Davis,charlie@rival.inc,Head of Sales,RivalInc,Mid-Market,Tech,Looking for new sales tools,Signed contract with CompetitorX yesterday,Skipped: Competitor signed recently,2026-02-05,,0.0,BLOCKED
-204,Diana Prince,diana@housing.gov,Director,Dept of Housing,Government,Government Administration,Budget approved for Q4,,Skipped: High-Risk Sector (Gov/Edu),2026-02-05,,0.0,BLOCKED
-205,Prof. Xavier,charles@academy.edu,Dean,Mutant Academy,500-1000,Education,Expanding curriculum scope,,Skipped: High-Risk Sector (Gov/Edu),2026-02-05,,0.0,BLOCKED
-206,Evan Lee,evan@tinyshop.net,Intern,TinyShop,1-10,Retail,Just browsing solutions,,Skipped: Low Signal (0),2026-02-05,,0.0,SKIPPED
-207,Fiona Gallagher,fiona@startupx.io,Founder,StartUpX,1-10,SaaS,Secured Series A funding and reviewing tech stack,,Skipped: Low Signal (45),2026-02-05,,0.0,SKIPPED
-208,George Martin,george@logistics.co,VP Engineering,OldReliable,Enterprise,Logistics,Aggressively hiring backend developers,,Skipped: Contacted 16 days ago (<30 limit),2026-02-05,,0.0,BLOCKED
-209,Hannah Montana,hannah@musicstream.com,CISO,MusicStream,Enterprise,Media,Implementing new security stack immediately,,Contacted,2026-02-05,"Hi Hannah, 
-MusicStream’s growing content library requires robust security. Our RevoAI platform offers an immediate, scalable solution to enhance your protection. Let’s discuss how we can secure MediaStream today. 
+aryan@revoai.com"
+202,Bob Smith,bob@downsize.com,VP HR,DownsizeCorp,Enterprise,Retail,Restructuring teams for efficiency,Recent massive layoffs reported,Skipped: Recent Layoffs detected,2026-02-06,0.0,BLOCKED,
+203,Charlie Davis,charlie@rival.inc,Head of Sales,RivalInc,Mid-Market,Tech,Looking for new sales tools,Signed contract with CompetitorX yesterday,Skipped: Competitor signed recently,2026-02-06,0.0,BLOCKED,
+204,Diana Prince,diana@housing.gov,Director,Dept of Housing,Government,Government Administration,Budget approved for Q4,,Skipped: High-Risk Sector (Gov/Edu),2026-02-06,0.0,BLOCKED,
+205,Prof. Xavier,charles@academy.edu,Dean,Mutant Academy,500-1000,Education,Expanding curriculum scope,,Skipped: High-Risk Sector (Gov/Edu),2026-02-06,0.0,BLOCKED,
+206,Evan Lee,evan@tinyshop.net,Intern,TinyShop,1-10,Retail,Just browsing solutions,,Skipped: Low Signal (0),2026-02-06,0.0,SKIPPED,
+207,Fiona Gallagher,fiona@startupx.io,Founder,StartUpX,1-10,SaaS,Secured Series A funding and reviewing tech stack,,Skipped: Low Signal (45),2026-02-06,0.0,SKIPPED,
+208,George Martin,george@logistics.co,VP Engineering,OldReliable,Enterprise,Logistics,Aggressively hiring backend developers,,Contacted,,0.0,STRUCTURAL_FAILED,"Hello George, I noticed your company is actively growing its backend development team. At RevoAI, we offer a powerful SaaS solution that enhances communication and collaboration for tech teams like yours. Would you be interested in a demo? Best, [Your Name]
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
-aryan@revoai.com",0.0,Approved
-210,Ian Malcolm,ian@dinopark.com,IT Manager,DinoPark,Mid-Market,Entertainment,Looking for budget approval,,Skipped: Low Signal (25),2026-02-05,,0.0,SKIPPED
-211,Kara Danvers,kara@savethecat.org,Lead Organizer,SaveTheCat,50-100,Non-profit,Recruiting new volunteers,,Skipped: High-Risk Sector (Gov/Edu),2026-02-05,,0.0,BLOCKED
-212,Liam Neeson,liam@skillset.hr,Head of Talent,SkillSet,Mid-Market,HR Tech,Aggressively growing sales team,,Contacted,2026-02-05,"Hi Liam, As a trailblazer in your field, you understand the value of transformation. RevoAI's AI-driven HR tech rapidly scales your sales team while reducing costs. Let’s explore how we can collaborate to drive your growth.
+aryan@revoai.com"
+209,Hannah Montana,hannah@musicstream.com,CISO,MusicStream,Enterprise,Media,Implementing new security stack immediately,,Contacted,,0.0,Pending,"Hi Hannah, MusicStream’s growing success demands robust security. Our new security stack from RevoAI ensures immediate protection for your valuable content and data. Let's discuss how we can enhance your security today.
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
-aryan@revoai.com",85.0,Approved
-213,Mona Lisa,mona@louvre.fr,Director,Louvre Museum,Enterprise,Art,Digitizing the collection,,Skipped: Low Signal (35),2026-02-05,,0.0,SKIPPED
-214,Nathan Drake,nathan@uncharted.com,CEO,Uncharted Ltd,1000+,Travel,Expanding into new global markets,,Contacted,2026-02-05,"Hi Nathan,
-I understand your goal of expanding into new global markets. RevoAI’s SaaS platform can provide you with the tools needed for seamless travel and logistics management. Let's discuss how we can support your growth. 
-
+aryan@revoai.com"
+210,Ian Malcolm,ian@dinopark.com,IT Manager,DinoPark,Mid-Market,Entertainment,Looking for budget approval,,Skipped: Low Signal (25),2026-02-06,0.0,SKIPPED,
+211,Kara Danvers,kara@savethecat.org,Lead Organizer,SaveTheCat,50-100,Non-profit,Recruiting new volunteers,,Skipped: High-Risk Sector (Gov/Edu),2026-02-06,0.0,BLOCKED,
+212,Liam Neeson,liam@skillset.hr,Head of Talent,SkillSet,Mid-Market,HR Tech,Aggressively growing sales team,,Contacted,,0.0,STRUCTURAL_FAILED,"Hi Liam, As an expert in talent acquisition, I believe RevoAI’s AI-driven solutions can significantly enhance your sales team growth by automating candidate screening and personalizing onboarding. Let’s discuss how we can support your aggressive hiring goals. Best, [Your Name]
 
 Best regards,
 Aryan Jain
 Sales Engineer, RevoAI
-aryan@revoai.com",0.0,Approved
-215,Sarah Connor,sarah@skynet.net,COO,Cyberdyne,Enterprise,Defense,Automating all defense systems,,Skipped: Low Signal (15),2026-02-05,,0.0,SKIPPED
+aryan@revoai.com"
+213,Mona Lisa,mona@louvre.fr,Director,Louvre Museum,Enterprise,Art,Digitizing the collection,,Skipped: Low Signal (35),2026-02-06,0.0,SKIPPED,
+214,Nathan Drake,nathan@uncharted.com,CEO,Uncharted Ltd,1000+,Travel,Expanding into new global markets,,Contacted,,0.0,STRUCTURAL_FAILED,"Hi Nathan, Expanding globally? RevoAI’s SaaS solutions enhance cross-border communication & tailor experiences for new markets. Let’s discuss how we can support your growth. Best, [Your Name]
+
+Best regards,
+Aryan Jain
+Sales Engineer, RevoAI
+aryan@revoai.com"
+215,Sarah Connor,sarah@skynet.net,COO,Cyberdyne,Enterprise,Defense,Automating all defense systems,,Skipped: Low Signal (15),2026-02-06,0.0,SKIPPED,

@@ -4,6 +4,7 @@
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
+import os
 
 # Resolve project root dynamically
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -21,21 +22,59 @@ INVOICES_FILE = BASE_DIR / "db" / "invoices.csv"
 
 def fetch_new_leads():
     df = pd.read_csv(LEADS_FILE)
+
+    # Auto-heal missing status column
+    if "status" not in df.columns:
+        df["status"] = "New"
+
+    df.to_csv(LEADS_FILE, index=False)
     return df[df["status"] == "New"]
 
 
-def update_lead_status(lead_id, new_status):
+
+def update_lead_status(lead_id, status):
     df = pd.read_csv(LEADS_FILE)
-    df.loc[df["id"] == lead_id, "status"] = new_status
+
+    # Ensure column exists
+    if "last_contacted" not in df.columns:
+        df["last_contacted"] = ""
+
+    # Force correct dtype (critical fix)
+    df["last_contacted"] = df["last_contacted"].astype(str)
+
+    df.loc[df["id"] == lead_id, "status"] = status
     df.loc[df["id"] == lead_id, "last_contacted"] = datetime.now().strftime("%Y-%m-%d")
+
     df.to_csv(LEADS_FILE, index=False)
 
 
-def save_draft(lead_id, email_text, score, review_status="Pending"):
+def save_draft(lead_id, draft_message, score, status):
     df = pd.read_csv(LEADS_FILE)
-    df.loc[df["id"] == lead_id, "draft_email"] = email_text
-    df.loc[df["id"] == lead_id, "confidence_score"] = score
-    df.loc[df["id"] == lead_id, "review_status"] = review_status
+
+    # ---------- HARD SCHEMA ENFORCEMENT ----------
+    REQUIRED_COLUMNS = {
+        "status": "New",
+        "draft_message": "",
+        "confidence_score": 0.0,
+        "review_status": "New"
+    }
+
+    for col, default in REQUIRED_COLUMNS.items():
+        if col not in df.columns:
+            df[col] = default
+
+    # FORCE correct dtypes (this is the critical fix)
+    df["status"] = df["status"].astype(str)
+    df["draft_message"] = df["draft_message"].astype(str)
+    df["review_status"] = df["review_status"].astype(str)
+    df["confidence_score"] = pd.to_numeric(df["confidence_score"], errors="coerce").fillna(0.0)
+
+    # ---------- SAFE WRITES ----------
+    df.loc[df["id"] == lead_id, "draft_message"] = str(draft_message)
+    df.loc[df["id"] == lead_id, "confidence_score"] = float(score)
+    df.loc[df["id"] == lead_id, "review_status"] = str(status)
+    df.loc[df["id"] == lead_id, "status"] = "Contacted"
+
     df.to_csv(LEADS_FILE, index=False)
 
 
@@ -72,46 +111,93 @@ def mark_review_decision(lead_id, decision, edited_email=None):
 # ---------------------
 
 def fetch_leads_by_status(status: str):
-    """Generic status query for orchestrator health checks."""
     df = pd.read_csv(LEADS_FILE)
+
+    # Auto-heal missing status column
+    if "status" not in df.columns:
+        df["status"] = "New"
+
+    df.to_csv(LEADS_FILE, index=False)
     return df[df["status"] == status]
+
 
 
 # ---------------------
 # DEALS (Sales Pipeline)
 # ---------------------
 
-def create_deal(lead_id, stage="Qualified", qualification_score=0, deal_value=0, notes=""):
-    """Create a new deal from a contacted lead."""
-    df = pd.read_csv(DEALS_FILE)
-    
-    new_deal_id = df["deal_id"].max() + 1 if not df.empty else 1
-    
-    new_deal = {
-        "deal_id": new_deal_id,
+def create_deal(
+    lead_id,
+    company=None,
+    acv=None,
+    deal_value=None,
+    qualification_score=None,
+    notes="",
+    stage="qualified"
+):
+    import pandas as pd
+    from datetime import datetime
+
+    # --------- SAFETY CHECKS ----------
+    if company is None:
+        raise ValueError("create_deal(): 'company' is required")
+
+    # Normalize ACV naming (support both)
+    if acv is None and deal_value is not None:
+        acv = deal_value
+
+    # --------- FILE INIT ----------
+    if not DEALS_FILE.exists():
+        df = pd.DataFrame(columns=[
+            "deal_id",
+            "lead_id",
+            "company",
+            "acv",
+            "qualification_score",
+            "stage",
+            "created_at",
+            "notes"
+        ])
+    else:
+        df = pd.read_csv(DEALS_FILE)
+
+    # --------- CREATE DEAL ----------
+    deal_id = f"DEAL-{len(df) + 1}"
+
+    new_row = {
+        "deal_id": deal_id,
         "lead_id": lead_id,
-        "stage": stage,
+        "company": company,
+        "acv": acv,
         "qualification_score": qualification_score,
-        "proposal_sent_date": "",
-        "expected_close_date": "",
-        "deal_value": deal_value,
-        "notes": notes,
-        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "review_status": "Pending" if qualification_score < 85 else "Auto-Approved"
+        "stage": stage,
+        "created_at": datetime.now().strftime("%Y-%m-%d"),
+        "notes": notes
     }
-    
-    df = pd.concat([df, pd.DataFrame([new_deal])], ignore_index=True)
+
+    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     df.to_csv(DEALS_FILE, index=False)
-    
-    return new_deal_id
+
+    return deal_id
 
 
-def fetch_deals_by_status(stage: str):
-    """Fetch deals by pipeline stage."""
+
+
+def fetch_deals_by_status(status):
+    # File does not exist yet → no deals
+    if not DEALS_FILE.exists():
+        return pd.DataFrame()
+
+    # File exists but empty
+    if os.path.getsize(DEALS_FILE) == 0:
+        return pd.DataFrame()
+
     df = pd.read_csv(DEALS_FILE)
-    if df.empty:
-        return df
-    return df[df["stage"] == stage]
+
+    if df.empty or "stage" not in df.columns:
+        return pd.DataFrame()
+
+    return df[df["stage"] == status]
 
 
 def update_deal_stage(deal_id, new_stage, notes=""):
@@ -184,12 +270,21 @@ def create_contract(deal_id, lead_id, contract_terms, contract_value):
     return new_contract_id
 
 
-def fetch_contracts_by_status(status: str):
-    """Fetch contracts by negotiation status."""
-    df = pd.read_csv(CONTRACTS_FILE)
-    if df.empty:
-        return df
+def fetch_contracts_by_status(status):
+    """
+    Fetch contracts filtered by status from contracts.csv
+    """
+
+    if not os.path.exists(CONTRACTS_FILE) or os.path.getsize(CONTRACTS_FILE) == 0:
+        return pd.DataFrame()
+
+    df = pd.read_csv(CONTRACTS_FILE, dtype=str)
+
+    if "status" not in df.columns:
+        return pd.DataFrame()
+
     return df[df["status"] == status]
+
 
 
 def update_contract_negotiation(contract_id, objections, proposed_solutions, confidence_score):
@@ -234,13 +329,34 @@ def mark_contract_decision(contract_id, decision):
 # ---------------------
 # INVOICES (Finance/ARRE)
 # ---------------------
+from datetime import datetime
+import pandas as pd
+
+def _load_invoices_df():
+    if not INVOICES_FILE.exists() or INVOICES_FILE.stat().st_size == 0:
+        return pd.DataFrame(columns=[
+            "invoice_id",
+            "contract_id",
+            "lead_id",
+            "amount",
+            "due_date",
+            "status",
+            "days_overdue",
+            "dunning_stage",
+            "last_contact_date",
+            "payment_date",
+            "draft_message",
+            "confidence_score",
+            "review_status"
+        ])
+    return pd.read_csv(INVOICES_FILE)
+
 
 def create_invoice(contract_id, lead_id, amount, due_date):
-    """Create invoice from signed contract."""
-    df = pd.read_csv(INVOICES_FILE)
-    
-    new_invoice_id = df["invoice_id"].max() + 1 if not df.empty else 1
-    
+    df = _load_invoices_df()
+
+    new_invoice_id = int(df["invoice_id"].max() + 1) if not df.empty else 1
+
     new_invoice = {
         "invoice_id": new_invoice_id,
         "contract_id": contract_id,
@@ -253,68 +369,62 @@ def create_invoice(contract_id, lead_id, amount, due_date):
         "last_contact_date": datetime.now().strftime("%Y-%m-%d"),
         "payment_date": "",
         "draft_message": "",
-        "confidence_score": 0,
+        "confidence_score": "",
         "review_status": "New"
     }
-    
+
     df = pd.concat([df, pd.DataFrame([new_invoice])], ignore_index=True)
     df.to_csv(INVOICES_FILE, index=False)
-    
+
     return new_invoice_id
 
 
-def fetch_invoices_by_status(status: str):
-    """Fetch invoices by payment status."""
-    df = pd.read_csv(INVOICES_FILE)
-    if df.empty:
-        return df
+def fetch_invoices_by_status(status):
+    df = _load_invoices_df()
     return df[df["status"] == status]
 
 
 def update_invoice_status(invoice_id, status, days_overdue=0, dunning_stage=0):
-    """Update invoice payment status."""
-    df = pd.read_csv(INVOICES_FILE)
-    df.loc[df["invoice_id"] == invoice_id, "status"] = status
-    df.loc[df["invoice_id"] == invoice_id, "days_overdue"] = days_overdue
-    df.loc[df["invoice_id"] == invoice_id, "dunning_stage"] = dunning_stage
+    df = _load_invoices_df()
+    df.loc[df["invoice_id"] == invoice_id, ["status", "days_overdue", "dunning_stage"]] = [
+        status, days_overdue, dunning_stage
+    ]
     df.to_csv(INVOICES_FILE, index=False)
 
 
 def save_dunning_draft(invoice_id, draft_message, confidence_score):
-    """Save dunning email draft for review."""
-    df = pd.read_csv(INVOICES_FILE)
-    df.loc[df["invoice_id"] == invoice_id, "draft_message"] = draft_message
-    df.loc[df["invoice_id"] == invoice_id, "confidence_score"] = confidence_score
-    df.loc[df["invoice_id"] == invoice_id, "review_status"] = "Auto-Approved" if confidence_score >= 85 else "Pending"
+    df = _load_invoices_df()
+
+    df.loc[df["invoice_id"] == invoice_id, "draft_message"] = str(draft_message)
+    df.loc[df["invoice_id"] == invoice_id, "confidence_score"] = str(confidence_score)
+    df.loc[df["invoice_id"] == invoice_id, "review_status"] = (
+        "Auto-Approved" if confidence_score >= 85 else "Pending"
+    )
     df.loc[df["invoice_id"] == invoice_id, "last_contact_date"] = datetime.now().strftime("%Y-%m-%d")
+
     df.to_csv(INVOICES_FILE, index=False)
 
 
 def mark_invoice_paid(invoice_id):
-    """Mark invoice as paid."""
-    df = pd.read_csv(INVOICES_FILE)
-    df.loc[df["invoice_id"] == invoice_id, "status"] = "Paid"
-    df.loc[df["invoice_id"] == invoice_id, "payment_date"] = datetime.now().strftime("%Y-%m-%d")
+    df = _load_invoices_df()
+    df.loc[df["invoice_id"] == invoice_id, ["status", "payment_date"]] = [
+        "Paid", datetime.now().strftime("%Y-%m-%d")
+    ]
     df.to_csv(INVOICES_FILE, index=False)
 
 
 def fetch_pending_dunning_reviews():
-    """Fetch dunning messages requiring human review."""
-    df = pd.read_csv(INVOICES_FILE)
-    if df.empty:
-        return df
+    df = _load_invoices_df()
     return df[df["review_status"] == "Pending"]
 
 
 def mark_dunning_decision(invoice_id, decision):
-    """Approve or reject dunning message."""
-    df = pd.read_csv(INVOICES_FILE)
+    df = _load_invoices_df()
     df.loc[df["invoice_id"] == invoice_id, "review_status"] = decision
-    
+
     if decision == "Approved":
-        # Increment dunning stage
-        current_stage = df.loc[df["invoice_id"] == invoice_id, "dunning_stage"].values[0]
-        df.loc[df["invoice_id"] == invoice_id, "dunning_stage"] = current_stage + 1
+        df.loc[df["invoice_id"] == invoice_id, "dunning_stage"] += 1
         df.loc[df["invoice_id"] == invoice_id, "last_contact_date"] = datetime.now().strftime("%Y-%m-%d")
-    
+
     df.to_csv(INVOICES_FILE, index=False)
+
