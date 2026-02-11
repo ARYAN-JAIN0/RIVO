@@ -9,7 +9,7 @@ from db.db_handler import (
     save_draft,
     mark_review_decision
 )
-from services.llm_client import call_llm
+from app.services.llm_client import call_llm
 from config.sdr_profile import (
     SDR_NAME,
     SDR_COMPANY,

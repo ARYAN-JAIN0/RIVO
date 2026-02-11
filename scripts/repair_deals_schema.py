@@ -9,7 +9,7 @@ if not DEALS_FILE.exists() or DEALS_FILE.stat().st_size == 0:
         "deal_id",
         "lead_id",
         "company",
-        "amount",
+        "acv",
         "stage",
         "confidence_score",
         "notes",
@@ -20,7 +20,7 @@ else:
 
 df["deal_id"] = pd.to_numeric(df.get("deal_id", 0), errors="coerce").fillna(0).astype(int)
 df["lead_id"] = pd.to_numeric(df.get("lead_id", 0), errors="coerce").fillna(0).astype(int)
-df["amount"] = pd.to_numeric(df.get("amount", 0.0), errors="coerce").fillna(0.0)
+df["acv"] = pd.to_numeric(df.get("acv", 0.0), errors="coerce").fillna(0.0)
 df["confidence_score"] = pd.to_numeric(df.get("confidence_score", 0.0), errors="coerce").fillna(0.0)
 
 df["company"] = df.get("company", "").astype(str)

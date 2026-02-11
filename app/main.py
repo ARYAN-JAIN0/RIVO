@@ -12,7 +12,7 @@ if project_root_str in sys.path:
     sys.path.remove(project_root_str)
 sys.path.insert(0, project_root_str)
 
-from agents.sdr_agent import run_sdr_agent
+from app.agents.sdr_agent import run_sdr_agent
 
 if __name__ == "__main__":
     run_sdr_agent()

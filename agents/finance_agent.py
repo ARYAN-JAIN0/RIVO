@@ -25,7 +25,7 @@ from db.db_handler import (
     update_invoice_status,
     save_dunning_draft
 )
-from services.llm_client import call_llm
+from app.services.llm_client import call_llm
 from config.sdr_profile import SDR_NAME, SDR_COMPANY, SDR_EMAIL
 
 
@@ -200,6 +200,12 @@ def run_finance_agent():
             contract_id = contract["contract_id"]
             lead_id = contract["lead_id"]
             amount = contract.get("contract_value", 0)
+            
+            # Check if invoice already exists for this contract
+            existing_invoices = _load_invoices_df()
+            if not existing_invoices.empty and contract_id in existing_invoices["contract_id"].values:
+             print(f"   ⏭️  Invoice already exists for Contract #{contract_id}")
+             continue
             
             # Set due date to 30 days from signed date
             signed_date_str = contract.get("signed_date", datetime.now().strftime("%Y-%m-%d"))

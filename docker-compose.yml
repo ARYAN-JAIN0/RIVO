@@ -1,1 +1,12 @@
+# AFTER (CLARIFIED):
 # Docker Compose configuration
+# STATUS: PLACEHOLDER - NOT YET IMPLEMENTED
+#
+# Future implementation will define:
+# - PostgreSQL service (replacing CSV storage)
+# - Redis service (for caching/pub-sub)
+# - Ollama service (for LLM inference)
+# - Application service (FastAPI)
+#
+# For now, use direct Python execution:
+#   python app/orchestrator.py

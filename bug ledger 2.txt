@@ -1,0 +1,154 @@
+# Repository Diagnostic Report (Error Detection Only)
+
+## Scope and coverage
+- Inventory source: `git ls-files` (10,472 tracked files).
+- Full inventory with filename/type/purpose is provided in `AUDIT_FILE_INVENTORY.tsv`.
+- Note: 10k+ files are vendored `.venv` third‑party packages; these are treated as external dependency artifacts, not first-party business logic.
+
+## Phase 1 — File inventory and coverage proof
+- Completed: every tracked file is listed in `AUDIT_FILE_INVENTORY.tsv`.
+- First-party files explicitly reviewed line-by-line:
+  - `.gitignore`, `.vscode/settings.json`, `README.md`
+  - `agents/*`, `app/*`, `config/*`, `db/*` (except binary sqlite), `memory/*` (except binary sqlite), `services/*`, `scripts/*`, `ui/*`, `utils/*`, `workers/*`, `docker-compose.yml`, `requirements.txt`, `run_orchestrator_clean.bat`.
+
+## Phase 2/3/4/5/6/7/8 Findings
+
+### 🔴 CRITICAL (Guaranteed crashes)
+1. **CRIT-001**  
+   File: `agents/sales_agent.py`  
+   Lines: 243-245  
+   Failure: `NameError` due to undefined variables `estimated_acv`, `bant_score`, `qualification_notes` passed into `create_deal`.  
+   Why guaranteed: these names are never defined in function scope; code path executes for first qualifying lead.
+
+2. **CRIT-002**  
+   File: `app/review_dashboard.py`  
+   Lines: 42  
+   Failure: `KeyError: 'draft_email'` when rendering `st.text_area`.  
+   Why guaranteed: persisted schema column is `draft_message` in `db/leads.csv` and `save_draft()` writes `draft_message`.
+
+3. **CRIT-003**  
+   File: `app/multi_agent_dashboard.py`  
+   Lines: 121  
+   Failure: `KeyError: 'draft_email'` in SDR tab.  
+   Why guaranteed: same schema mismatch as above.
+
+4. **CRIT-004**  
+   File: `agents/sales_agent.py`  
+   Lines: 20-25, run mode via `python agents/sales_agent.py`  
+   Failure: `ModuleNotFoundError: No module named 'db'`.  
+   Why guaranteed: this file lacks path bootstrap used by `app/main.py`; direct script execution from README-style invocation pattern for single file will fail.
+
+### 🟠 HIGH (Wrong results / pipeline corruption)
+1. File: `db/db_handler.py`  
+   Impact: schema drift and split source-of-truth for drafts.  
+   Failure mode: `save_draft()` writes `draft_message`, but `mark_review_decision()` writes edited text to `draft_email`, creating a second column and causing UIs/agents to read inconsistent fields.
+
+2. File: `agents/negotiation_agent.py` + `db/db_handler.py` + dashboards  
+   Impact: deal value silently collapses to defaults.  
+   Failure mode: `create_deal()` persists `acv`; downstream negotiation and dashboard read `deal_value` key, so value becomes 0/50000 fallbacks, causing incorrect objection simulation, contract values, and display.
+
+3. File: `agents/finance_agent.py`  
+   Impact: duplicate invoices per rerun.  
+   Failure mode: signed contracts always call `create_invoice()` with no de-dup by `contract_id`; each execution appends additional invoice rows.
+
+4. File: `README.md`  
+   Impact: broken operator runbook.  
+   Failure mode: references `run_orchestrator.bat`, but repository only contains `run_orchestrator_clean.bat`.
+
+### 🟡 MEDIUM (Silent/edge-case failures)
+1. File: `services/llm_client.py`  
+   Scenario: unreachable dead code after unconditional `return ""`; duplicated legacy request block is never executed.
+
+2. File: `requirements.txt` vs runtime behavior  
+   Scenario: orchestrator logs disabled memory components because `chromadb`/`networkx` not declared required despite imports/feature usage.
+
+3. File: `.gitignore` and repo contents  
+   Scenario: `.venv` is tracked; environment-specific binaries and site-packages bloat repo and create nondeterministic cross-platform behavior.
+
+4. File: `.vscode/settings.json`  
+   Scenario: apparent API key-like value committed in editor settings; credential handling ambiguous and unsafe.
+
+5. File: `scripts/repair_deals_schema.py`  
+   Scenario: repairs `amount` column while application logic uses `acv` (and elsewhere `deal_value`), perpetuating schema inconsistency.
+
+6. File: `db/contracts.csv` (empty) + db handler reads  
+   Scenario: empty file read paths may return empty dataframes without explicit schema initialization, causing column-dependent paths to behave inconsistently.
+
+### 🔵 STRUCTURAL / SYSTEMIC
+1. Multiple pseudo-init files (`agents/_init_.py`, `app/_init_.py`, `db/_init_.py`) are misspelled and do not function as package init markers. Risk: ambiguous package import semantics and maintainability issues.
+2. Three partially overlapping dashboards (`ui/dashboard.py` placeholder, `app/review_dashboard.py`, `app/multi_agent_dashboard.py`) with diverging schema assumptions increase drift risk.
+3. Repository tracks generated/binary runtime artifacts (`memory/chroma_db/chroma.sqlite3`, full `.venv`) causing non-reproducible state coupling.
+
+### 🟣 AMBIGUITIES / UNDEFINED BEHAVIOR
+1. `docker-compose.yml` is a placeholder with no services; deployment story undefined.
+2. `services/email_sender.py`, `ui/dashboard.py`, `workers/scheduler.py`, `app/config.py` are placeholders; runtime contract is undefined.
+3. `db/schema.sql` (SQL table) and CSV-based runtime storage are parallel, unsynchronized schemas.
+4. `db/deals.csv` is expected by code but not committed; first-run behavior depends on runtime creation path and caller ordering.
+
+## Final self-audit
+- Did you analyze every tracked file? **Yes for inventory listing** (all 10,472 listed in `AUDIT_FILE_INVENTORY.tsv`); **No for deep semantic audit of all vendored `.venv` third-party files** (treated as external dependencies and flagged as ambiguity/risk).
+- Any uncertain behavior? **Yes**: third-party `.venv` internals, placeholder modules with no implementation, and undeclared deployment contract.
+- Any part not confidently simulated? **Yes**: Streamlit UI interaction paths and external LLM/networked dependencies under production load.
+- Anything suspected but not provable? **Yes**: additional schema drift likely when `mark_review_decision()` introduces `draft_email` in existing CSVs over time.
+
+## ✅ Minimum Fix Readiness Checklist (diagnostic only)
+- [ ] Resolve `agents/sales_agent.py` undefined-variable crash path.
+- [ ] Unify lead draft field naming (`draft_message` vs `draft_email`) across DB + both dashboards.
+- [ ] Unify deal value schema (`acv` vs `amount` vs `deal_value`) across agents, DB handlers, scripts, dashboards.
+- [ ] Add invoice de-duplication invariant keyed by `contract_id`.
+- [ ] Align README commands with actual runner files.
+- [ ] Remove dead code in `services/llm_client.py` and define one deterministic error path.
+- [ ] Declare/lock required dependencies for optional memory subsystems or hard-disable them consistently.
+- [ ] Stop tracking `.venv` and other generated runtime artifacts.
+- [ ] Define behavior/contracts for placeholder modules (`email_sender`, `scheduler`, `ui/dashboard`, `app/config`).
+- [ ] Decide single persistence model (CSV vs SQL) or define synchronization contract.
+- [ ] Provide deterministic bootstrap for missing runtime files (`db/deals.csv`) and schemas.
+
+
+
+# Diagnostic Re-check Addendum (Delta Only)
+
+This addendum contains only gaps, skipped coverage, assumptions, and uncertain items that were missing/incomplete in the previous report.
+
+## 1) Coverage re-verification
+- Total tracked files now: **10,474**.
+- Explicitly deep-reviewed first-party files: **43** (all non-`.venv/` tracked files, including CSV/SQL/BAT/markdown/config placeholders).
+- Not deeply semantically reviewed: **10,431** files under `.venv/` (third-party vendored runtime artifacts).
+- Binary artifact not semantically inspectable as text: `memory/chroma_db/chroma.sqlite3`.
+
+## 2) Skipped files/flows/interactions identified in the previous pass
+
+### Newly found runtime-crash paths (not previously listed)
+1. **RC-ADD-001 (Guaranteed crash on clean state): missing deals file in review fetch**  
+   - File: `db/db_handler.py` lines 223-229.  
+   - `fetch_pending_deal_reviews()` always executes `pd.read_csv(DEALS_FILE)` with no existence/emptiness guard.  
+   - Current repo state has no `db/deals.csv`, so this raises `FileNotFoundError`.  
+   - Affected flow: `app/multi_agent_dashboard.py` sidebar + Sales tab call this function immediately.
+
+2. **RC-ADD-002 (Guaranteed crash with current repo file): empty contracts CSV read**  
+   - File: `db/db_handler.py` lines 309-314.  
+   - `fetch_pending_contract_reviews()` reads `contracts.csv` directly with no empty-file guard.  
+   - Current `db/contracts.csv` is 0-byte; pandas raises `EmptyDataError`.  
+   - Affected flow: `app/multi_agent_dashboard.py` sidebar + Negotiation tab.
+
+3. **RC-ADD-003 (Guaranteed crash at first contract creation with current data):**  
+   - File: `db/db_handler.py` lines 246-250.  
+   - `create_contract()` reads `contracts.csv` directly; with current empty file it raises `EmptyDataError` before row creation.
+
+### Interaction coverage gaps from previous pass
+- Streamlit execution paths were not run end-to-end (UI render + widget action callbacks not executed in browser).
+- Dashboard helper DB calls (`fetch_pending_deal_reviews`, `fetch_pending_contract_reviews`) were not function-level executed in prior pass.
+
+## 3) Assumptions accidentally made in previous report
+1. Assumed third-party `.venv/` code could be excluded from semantic diagnostics without explicitly listing that as unresolved risk per-file.
+2. Assumed first-party “line-by-line reviewed” was sufficient to infer all dashboard runtime helper behavior without direct function execution.
+3. Assumed empty `contracts.csv` behavior would be covered by other guarded functions (`fetch_contracts_by_status`), which does not apply to pending-review/creation functions.
+
+## 4) Issues I am <100% confident about (therefore listed as problems)
+1. **UNC-001:** The exact first visible crash in `app/multi_agent_dashboard.py` can vary by execution order (Sales tab helper vs Negotiation helper vs sidebar metrics), but at least one of these crash paths is guaranteed with current data files.
+2. **UNC-002:** I cannot prove whether any workflow depends intentionally on vendored `.venv` tracked files being immutable in git history; however, this repo state still creates cross-platform nondeterminism risk and remains unresolved.
+3. **UNC-003:** I cannot fully simulate all Streamlit callback state transitions (approve/reject actions) without interactive browser execution; any callback-side schema mismatch not yet triggered should be treated as potential defect until exercised.
+
+## 5) Explicit uncertainty policy confirmation
+- Any uncertainty above is treated as a problem and is intentionally recorded here.
+- No previously listed issue is repeated here unless it was incomplete.

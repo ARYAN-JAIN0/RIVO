@@ -81,12 +81,11 @@ streamlit run app/multi_agent_dashboard.py
 
 Then open the local URL Streamlit prints in the terminal (usually `http://localhost:8501`).
 
-### D) Run the orchestrator on Windows (`run_orchestrator.bat`)
+### D) Run the orchestrator on Windows (`run_orchestrator_clean.bat`)
 
 From **Command Prompt** in the project root:
-
 ```bat
-run_orchestrator.bat
+run_orchestrator_clean.bat
 ```
 
 Or run a specific stage:
@@ -99,7 +98,7 @@ run_orchestrator.bat finance
 run_orchestrator.bat health
 ```
 
-You can also double-click `run_orchestrator.bat` in File Explorer to run the full pipeline.
+You can also double-click `run_orchestrator_clean.bat` in File Explorer to run the full pipeline.
 
 ## Docker Compose status
 

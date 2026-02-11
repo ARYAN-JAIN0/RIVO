@@ -23,7 +23,7 @@ from db.db_handler import (
     update_contract_negotiation,
     fetch_pending_contract_reviews
 )
-from services.llm_client import call_llm
+from app.services.llm_client import call_llm
 from config.sdr_profile import SDR_NAME, SDR_COMPANY
 
 
@@ -82,7 +82,7 @@ def generate_objection_response(deal, objections: str) -> tuple[str, int]:
     
     company = str(deal.get('company', 'Company'))
     industry = str(deal.get('industry', 'Industry'))
-    deal_value = deal.get('deal_value', 50000)
+    deal_value = deal.get('acv', 50000)
     
     prompt = f"""
 You are a Senior Sales Negotiator handling objections.

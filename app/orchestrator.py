@@ -20,10 +20,10 @@ from typing import Dict, List
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from agents.sdr_agent import run_sdr_agent
-from agents.sales_agent import run_sales_agent
-from agents.negotiation_agent import run_negotiation_agent
-from agents.finance_agent import run_finance_agent
+from app.agents.sdr_agent import run_sdr_agent
+from app.agents.sales_agent import run_sales_agent
+from app.agents.negotiation_agent import run_negotiation_agent
+from app.agents.finance_agent import run_finance_agent
 from db.db_handler import fetch_leads_by_status
 from memory.vector_store import initialize_vector_store
 from memory.graph_store import initialize_graph_store

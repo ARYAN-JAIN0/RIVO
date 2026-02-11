@@ -12,10 +12,18 @@ BACKWARD COMPATIBILITY:
 - Writes ONLY to deals.csv (never modifies leads.csv)
 - Follows same pattern as SDR: gates → generation → scoring → approval/review
 """
+import sys
+from pathlib import Path
+
+from app.main import PROJECT_ROOT
+
+ROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import json
 import pandas as pd
 from datetime import datetime, timedelta
+
 
 from db.db_handler import (
     fetch_leads_by_status,
@@ -23,7 +31,7 @@ from db.db_handler import (
     save_deal_review,
     mark_deal_decision
 )
-from services.llm_client import call_llm
+from app.services.llm_client import call_llm
 from config.sdr_profile import SDR_NAME, SDR_COMPANY
 
 
@@ -240,9 +248,9 @@ def run_sales_agent():
         deal_id = create_deal(
             lead_id=lead_id,
             company=company,
-            acv=estimated_acv,
-            qualification_score=bant_score,
-            notes=qualification_notes,
+            acv=deal_value,
+            qualification_score=qual_score,
+            notes=notes,
             stage="qualified"
         )
 

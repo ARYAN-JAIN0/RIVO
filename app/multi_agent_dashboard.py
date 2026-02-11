@@ -118,7 +118,7 @@ with tab1:
                 # Email editor
                 edited_email = st.text_area(
                     "Email Draft",
-                    value=row["draft_email"],
+                    value=row["draft_message"],
                     height=250,
                     key=f"sdr_email_{row['id']}"
                 )
@@ -178,7 +178,7 @@ with tab2:
                     with col_a:
                         st.metric("Stage", deal.get('stage', 'N/A'))
                     with col_b:
-                        st.metric("Deal Value", f"${deal.get('deal_value', 0):,}")
+                        st.metric("Deal Value", f"${deal.get('acv', 0):,}")
                     with col_c:
                         st.metric("BANT Score", f"{deal.get('qualification_score', 0)}/100")
                     

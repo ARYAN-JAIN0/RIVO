@@ -39,7 +39,7 @@ for _, row in pending.iterrows():
 
     edited_email = st.text_area(
         "Draft Email",
-        value=row["draft_email"],
+        value=row["draft_message"],
         height=220,
         key=f"email_{row['id']}"
     )

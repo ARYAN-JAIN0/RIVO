@@ -89,11 +89,11 @@ def fetch_pending_reviews(include_structural_failed=False):
 
 def mark_review_decision(lead_id, decision, edited_email=None):
     df = pd.read_csv(LEADS_FILE)
-
+    
     df.loc[df["id"] == lead_id, "review_status"] = decision
 
     if edited_email:
-        df.loc[df["id"] == lead_id, "draft_email"] = edited_email
+        df.loc[df["id"] == lead_id, "draft_message"] = edited_email 
 
     if decision == "Approved":
         df.loc[df["id"] == lead_id, "status"] = "Contacted"
@@ -222,6 +222,10 @@ def save_deal_review(deal_id, notes, score, review_status="Pending"):
 
 def fetch_pending_deal_reviews():
     """Fetch deals requiring human review."""
+    # Guard against missing file
+    if not DEALS_FILE.exists() or DEALS_FILE.stat().st_size == 0:
+        return pd.DataFrame()
+    
     df = pd.read_csv(DEALS_FILE)
     if df.empty:
         return df
@@ -245,7 +249,15 @@ def mark_deal_decision(deal_id, decision):
 
 def create_contract(deal_id, lead_id, contract_terms, contract_value):
     """Create contract from approved deal."""
-    df = pd.read_csv(CONTRACTS_FILE)
+    # Initialize with schema if file missing/empty
+    if not CONTRACTS_FILE.exists() or CONTRACTS_FILE.stat().st_size == 0:
+        df = pd.DataFrame(columns=[
+            "contract_id", "deal_id", "lead_id", "status", "contract_terms",
+            "negotiation_points", "objections", "proposed_solutions",
+            "signed_date", "contract_value", "last_updated", "review_status"
+        ])
+    else:
+        df = pd.read_csv(CONTRACTS_FILE)
     
     new_contract_id = df["contract_id"].max() + 1 if not df.empty else 1
     
@@ -308,6 +320,10 @@ def mark_contract_signed(contract_id):
 
 def fetch_pending_contract_reviews():
     """Fetch contracts requiring human review."""
+    # Guard against missing/empty file
+    if not CONTRACTS_FILE.exists() or CONTRACTS_FILE.stat().st_size == 0:
+        return pd.DataFrame()
+    
     df = pd.read_csv(CONTRACTS_FILE)
     if df.empty:
         return df
