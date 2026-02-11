@@ -6,7 +6,7 @@
   - `main.py` - Entry point (later FastAPI)
   - `config.py` - Environment variables
 
-- **agents/**: Intelligence layer
+- **app/agents/**: Intelligence layer
   - `sdr_agent.py`
   - `sales_agent.py`
   - `negotiation_agent.py`
@@ -70,7 +70,7 @@ python app/main.py
 ### B) Run the single-agent review dashboard (Streamlit)
 
 ```bash
-streamlit run ui/dashboard.py
+streamlit run app/review_dashboard.py
 ```
 
 ### C) Run the multi-agent review dashboard (Streamlit)
