@@ -1,1 +1,0 @@
-invoice_id,contract_id,lead_id,amount,due_date,status,days_overdue,dunning_stage,last_contact_date,payment_date,draft_message,confidence_score,review_status

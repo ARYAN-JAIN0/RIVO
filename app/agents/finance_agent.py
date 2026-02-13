@@ -8,20 +8,24 @@ Trigger: Contract status = "Signed"
 Output: Invoices with dunning email drafts for overdue accounts
 
 BACKWARD COMPATIBILITY:
-- Reads from contracts.csv (status="Signed")
-- Writes ONLY to invoices.csv
+- Reads from contracts table (status="Signed")
+- Writes ONLY to invoices table
 - Same pattern: analysis → generation → scoring → approval/review
 """
 
 import json
-import pandas as pd
-from datetime import datetime, timedelta
-from db.db_handler import _load_invoices_df
+import sys
+from pathlib import Path
+from datetime import datetime, timedelta, date
 
-from db.db_handler import (
+# Set PROJECT_ROOT directly (avoid circular imports from app.main)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.database.db_handler import (
     fetch_contracts_by_status,
     create_invoice,
-    fetch_invoices_by_status,
+    fetch_all_invoices,
     update_invoice_status,
     save_dunning_draft
 )
@@ -44,11 +48,22 @@ DUNNING_STAGES = {
 }
 
 
-def calculate_days_overdue(due_date_str: str) -> int:
+def calculate_days_overdue(due_date_obj) -> int:
     """Calculate how many days past due date."""
+    if not due_date_obj:
+        return 0
+        
     try:
-        due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
-        delta = (datetime.now() - due_date).days
+        # Normalize to datetime or date for comparison
+        if isinstance(due_date_obj, str):
+            due_date = datetime.strptime(due_date_obj, "%Y-%m-%d").date()
+        elif isinstance(due_date_obj, datetime):
+            due_date = due_date_obj.date()
+        else:
+            due_date = due_date_obj
+            
+        current_date = datetime.now().date()
+        delta = (current_date - due_date).days
         return max(0, delta)  # Never negative
     except (ValueError, AttributeError):
         return 0
@@ -76,10 +91,16 @@ def generate_dunning_email(invoice, stage_config) -> tuple[str, int]:
     Generate dunning email using LLM with appropriate tone.
     Returns (email_body, confidence_score).
     """
-    company = str(invoice.get('company', 'Customer'))
-    amount = invoice.get('amount', 0)
-    invoice_id = invoice.get('invoice_id', 'INV-XXX')
-    days_overdue = invoice.get('days_overdue', 0)
+    # Assuming invoice is ORM object
+    # Need to get company name from invoice.lead.company if possible
+    try:
+        company = str(invoice.lead.company) if invoice.lead else 'Customer'
+    except:
+        company = 'Customer'
+        
+    amount = getattr(invoice, 'amount', 0)
+    invoice_id = getattr(invoice, 'id', 'INV-XXX')
+    days_overdue = getattr(invoice, 'days_overdue', 0)
     tone = stage_config['tone']
     
     # Tone guidelines for different stages
@@ -195,28 +216,35 @@ def run_finance_agent():
     print("📋 Step 1: Creating invoices for signed contracts...")
     signed_contracts = fetch_contracts_by_status("Signed")
     
-    if not signed_contracts.empty:
-        for _, contract in signed_contracts.iterrows():
-            contract_id = contract["contract_id"]
-            lead_id = contract["lead_id"]
-            amount = contract.get("contract_value", 0)
+    # We need to check existing invoices. 
+    # fetch_all_invoices() returns List[Invoice]
+    all_invoices = fetch_all_invoices()
+    existing_contract_ids = {inv.contract_id for inv in all_invoices}
+    
+    if signed_contracts:
+        for contract in signed_contracts:
+            contract_id = contract.id
+            lead_id = contract.lead_id
+            amount = getattr(contract, "contract_value", 0)
             
             # Check if invoice already exists for this contract
-            existing_invoices = _load_invoices_df()
-            if not existing_invoices.empty and contract_id in existing_invoices["contract_id"].values:
+            if contract_id in existing_contract_ids:
              print(f"   ⏭️  Invoice already exists for Contract #{contract_id}")
              continue
             
             # Set due date to 30 days from signed date
-            signed_date_str = contract.get("signed_date", datetime.now().strftime("%Y-%m-%d"))
-            try:
-                signed_date = datetime.strptime(signed_date_str, "%Y-%m-%d")
-                due_date = signed_date + timedelta(days=PAYMENT_TERMS_DAYS)
-            except:
-                due_date = datetime.now() + timedelta(days=PAYMENT_TERMS_DAYS)
+            signed_date = getattr(contract, "signed_date", datetime.now())
+            if not signed_date:
+                signed_date = datetime.now()
             
-            # Check if invoice already exists
-            # (In production, would query invoices by contract_id)
+            # Ensure signed_date is datetime object
+            if isinstance(signed_date, str):
+                 try:
+                     signed_date = datetime.strptime(signed_date, "%Y-%m-%d")
+                 except:
+                     signed_date = datetime.now()
+            
+            due_date = signed_date + timedelta(days=PAYMENT_TERMS_DAYS)
             
             invoice_id = create_invoice(
                 contract_id=contract_id,
@@ -233,26 +261,27 @@ def run_finance_agent():
     print(f"\n📋 Step 2: Processing overdue invoices...")
     
     # Fetch all sent invoices (could be paid, sent, or overdue)
-    all_invoices = _load_invoices_df()
+    # Refresh invoices list after creation
+    all_invoices = fetch_all_invoices()
     
-    if all_invoices.empty:
+    if not all_invoices:
         print("   No invoices to process.")
         return
     
-    # Filter for unpaid invoices only
-    unpaid = all_invoices[all_invoices['status'].isin(['Sent', 'Overdue'])]
+    # Filter for unpaid invoices only (status not Paid)
+    unpaid = [inv for inv in all_invoices if inv.status in ['Sent', 'Overdue']]
     
-    if unpaid.empty:
+    if not unpaid:
         print("   All invoices are paid!")
         return
     
     print(f"   Found {len(unpaid)} unpaid invoices\n")
     
-    for _, invoice in unpaid.iterrows():
-        invoice_id = invoice['invoice_id']
-        due_date = invoice['due_date']
-        amount = invoice['amount']
-        current_stage = invoice.get('dunning_stage', 0)
+    for invoice in unpaid:
+        invoice_id = invoice.id
+        due_date = invoice.due_date
+        amount = getattr(invoice, 'amount', 0)
+        current_stage = getattr(invoice, 'dunning_stage', 0) or 0
         
         # Calculate days overdue
         days_overdue = calculate_days_overdue(due_date)

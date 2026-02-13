@@ -1,3 +1,8 @@
+from datetime import datetime
+from app.database.models import Deal
+from app.services.base_service import BaseService
+
+
 class DealService(BaseService):
 
     def create_deal(self, lead_id: int, acv: int, qualification_score: int):

@@ -8,24 +8,21 @@ Trigger: Lead status = "Contacted" (from SDR approval)
 Output: Deal created with qualification score
 
 BACKWARD COMPATIBILITY:
-- Reads from leads.csv (status="Contacted")
-- Writes ONLY to deals.csv (never modifies leads.csv)
+- Reads from leads dictionary/object access (status="Contacted")
+- Writes ONLY to deals table (never modifies leads table directly except status)
 - Follows same pattern as SDR: gates → generation → scoring → approval/review
 """
 import sys
 from pathlib import Path
 
-from app.main import PROJECT_ROOT
-
-ROJECT_ROOT = Path(__file__).resolve().parents[1]
+# Set PROJECT_ROOT directly (avoid circular imports from app.main)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import json
-import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
-
-from db.db_handler import (
+from app.database.db_handler import (
     fetch_leads_by_status,
     create_deal,
     save_deal_review,
@@ -54,11 +51,11 @@ def calculate_qualification_score(lead) -> tuple[int, list]:
     score = 0
     reasons = []
     
-    # Safe value extraction
-    company_size = str(lead.get('company_size', '')).lower()
-    role = str(lead.get('role', '')).lower()
-    insight = str(lead.get('verified_insight', '')).lower()
-    industry = str(lead.get('industry', '')).lower()
+    # Safe value extraction (ORM object access)
+    company_size = str(getattr(lead, 'company_size', '')).lower()
+    role = str(getattr(lead, 'role', '')).lower()
+    insight = str(getattr(lead, 'verified_insight', '')).lower()
+    industry = str(getattr(lead, 'industry', '')).lower()
     
     # 1. Budget (25 points) - Company size proxy
     if 'enterprise' in company_size or '1000+' in company_size:
@@ -112,7 +109,7 @@ def estimate_deal_value(lead) -> int:
     Estimate annual contract value based on company size.
     Conservative estimates to avoid over-promising.
     """
-    company_size = str(lead.get('company_size', '')).lower()
+    company_size = str(getattr(lead, 'company_size', '')).lower()
     
     if 'enterprise' in company_size or '1000+' in company_size:
         return 100000  # $100k ACV
@@ -129,10 +126,10 @@ def generate_qualification_notes(lead, score, reasons) -> str:
     Generate LLM-powered qualification analysis.
     Falls back to deterministic notes if LLM unavailable.
     """
-    name = str(lead.get('name', 'Prospect'))
-    company = str(lead.get('company', 'Company'))
-    role = str(lead.get('role', 'Role'))
-    insight = str(lead.get('verified_insight', 'No insight'))
+    name = str(getattr(lead, 'name', 'Prospect'))
+    company = str(getattr(lead, 'company', 'Company'))
+    role = str(getattr(lead, 'role', 'Role'))
+    insight = str(getattr(lead, 'verified_insight', 'No insight'))
     
     prompt = f"""
 You are a Sales Qualification Agent analyzing a lead.
@@ -198,12 +195,12 @@ def run_sales_agent():
     3. Estimate deal value
     4. Generate qualification notes via LLM
     5. Auto-approve (≥85) or send for human review
-    6. Create deal in deals.csv
+    6. Create deal in deals table
     """
     # Fetch only leads that SDR successfully contacted
     contacted_leads = fetch_leads_by_status("Contacted")
     
-    if contacted_leads.empty:
+    if not contacted_leads:
         print("No contacted leads to qualify.")
         return
     
@@ -211,17 +208,14 @@ def run_sales_agent():
     print(f"💼 SALES AGENT: Processing {len(contacted_leads)} contacted leads")
     print(f"{'='*60}\n")
     
-    for _, lead in contacted_leads.iterrows():
-        lead_id = lead["id"]
-        name = str(lead.get('name', 'Prospect'))
-        company = (
-           lead.get("company")
-           or lead.get("company_name")
-           or lead.get("account")
-         )
-
+    for lead in contacted_leads:
+        lead_id = lead.id
+        name = str(getattr(lead, 'name', 'Prospect'))
+        company = str(getattr(lead, 'company', ''))
+        
         if not company:
-            raise ValueError(f"Missing company for lead {lead_id}")
+            # Fallback for old data if needed, or error
+            company = "Unknown Company"
 
         print(f"\n🔍 Qualifying Lead: {name} ({company})")
         

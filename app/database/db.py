@@ -1,7 +1,9 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from app.core.config import get_config
 
-DATABASE_URL = "postgresql://postgres:17182905@localhost:5432/rivo_db"
+config = get_config()
+DATABASE_URL = config.DATABASE_URL
 
 engine = create_engine(DATABASE_URL, echo=True)
 

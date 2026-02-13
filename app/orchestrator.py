@@ -12,9 +12,15 @@ BACKWARD COMPATIBILITY GUARANTEES:
 """
 
 import sys
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List
+
+# Fix UTF-8 encoding for Windows console (emoji support)
+if sys.platform == "win32":
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    sys.stdout.reconfigure(encoding="utf-8")
 
 # Ensure project root is importable - FIXED FOR WINDOWS
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -24,7 +30,7 @@ from app.agents.sdr_agent import run_sdr_agent
 from app.agents.sales_agent import run_sales_agent
 from app.agents.negotiation_agent import run_negotiation_agent
 from app.agents.finance_agent import run_finance_agent
-from db.db_handler import fetch_leads_by_status
+from app.database.db_handler import fetch_leads_by_status
 from memory.vector_store import initialize_vector_store
 from memory.graph_store import initialize_graph_store
 
@@ -118,16 +124,16 @@ class RevoOrchestrator:
             contacted = fetch_leads_by_status("Contacted")
             
             # Sales Stage (from new CSV)
-            from db.db_handler import fetch_deals_by_status
+            from app.database.db_handler import fetch_deals_by_status
             qualified = fetch_deals_by_status("Qualified")
             proposals = fetch_deals_by_status("Proposal Sent")
             
             # Negotiation Stage
-            from db.db_handler import fetch_contracts_by_status
+            from app.database.db_handler import fetch_contracts_by_status
             negotiating = fetch_contracts_by_status("Negotiating")
             
             # Finance Stage
-            from db.db_handler import fetch_invoices_by_status
+            from app.database.db_handler import fetch_invoices_by_status
             overdue = fetch_invoices_by_status("Overdue")
             
             return {

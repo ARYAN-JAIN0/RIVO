@@ -1,10 +1,16 @@
 import json
 import re
+import sys
+from pathlib import Path
 from datetime import datetime
-import pandas as pd
 
-from db.db_handler import (
-    fetch_new_leads,
+# Set PROJECT_ROOT directly (avoid circular imports from app.main)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Updated imports for ORM-based db_handler
+from app.database.db_handler import (
+    fetch_leads_by_status,  # Was fetch_new_leads
     update_lead_status,
     save_draft,
     mark_review_decision
@@ -26,8 +32,8 @@ SIGNAL_THRESHOLD = 60
 # -------------------------------------------------
 
 def safe_str(val) -> str:
-    """Safely converts pandas values (NaN, float, None) to empty string."""
-    if pd.isna(val) or val is None:
+    """Safely converts values (None, etc) to empty string."""
+    if val is None:
         return ""
     return str(val).strip()
 
@@ -40,9 +46,10 @@ def check_negative_gate(lead) -> tuple[bool, str]:
     Gate 1: Hard blocks. Returns (IsBlocked, Reason).
     Checks for layoffs, competitors, high-risk sectors, or recent contact.
     """
-    neg_signals = safe_str(lead.get('negative_signals', '')).lower()
-    industry = safe_str(lead.get('industry', '')).lower()
-    last_contacted = safe_str(lead.get('last_contacted', ''))
+    # ORM object access
+    neg_signals = safe_str(getattr(lead, 'negative_signals', '')).lower()
+    industry = safe_str(getattr(lead, 'industry', '')).lower()
+    last_contacted = getattr(lead, 'last_contacted', None)
 
     # 1. Critical Business Risks
     if 'layoff' in neg_signals:
@@ -58,12 +65,16 @@ def check_negative_gate(lead) -> tuple[bool, str]:
     # 3. Frequency Cap (Prevent spamming)
     if last_contacted:
         try:
-            # parsing YYYY-MM-DD
-            last_date = datetime.strptime(last_contacted, '%Y-%m-%d')
+            # last_contacted is likely a datetime object from ORM
+            if isinstance(last_contacted, str):
+                last_date = datetime.strptime(last_contacted, '%Y-%m-%d')
+            else:
+                last_date = last_contacted
+                
             delta = (datetime.now() - last_date).days
             if delta < 30:
                 return True, f"Contacted {delta} days ago (<30 limit)"
-        except ValueError:
+        except (ValueError, TypeError):
             # If date is malformed, ignore it (safer than crashing)
             pass
 
@@ -77,9 +88,9 @@ def calculate_signal_score(lead) -> tuple[int, list]:
     score = 0
     reasons = []
     
-    insight = safe_str(lead.get('verified_insight', '')).lower()
-    role = safe_str(lead.get('role', '')).lower()
-    size = safe_str(lead.get('company_size', '')).lower()
+    insight = safe_str(getattr(lead, 'verified_insight', '')).lower()
+    role = safe_str(getattr(lead, 'role', '')).lower()
+    size = safe_str(getattr(lead, 'company_size', '')).lower()
     
     # 1. Intent Signals (+30 / +25)
     if 'hiring' in insight or 'growing' in insight or 'expanding' in insight:
@@ -151,10 +162,10 @@ def validate_structure(email_text: str) -> bool:
 
 def build_fallback_email_body(lead) -> str:
     """Deterministic fallback when LLM is unavailable or times out."""
-    name = safe_str(lead.get('name', 'there'))
-    company = safe_str(lead.get('company', 'your team'))
-    industry = safe_str(lead.get('industry', 'your industry'))
-    insight = safe_str(lead.get('verified_insight', 'recent operational changes'))
+    name = safe_str(getattr(lead, 'name', 'there'))
+    company = safe_str(getattr(lead, 'company', 'your team'))
+    industry = safe_str(getattr(lead, 'industry', 'your industry'))
+    insight = safe_str(getattr(lead, 'verified_insight', 'recent operational changes'))
 
     return (
         f"Hi {name}, I noticed {company} is seeing {insight} in {industry}. "
@@ -163,10 +174,10 @@ def build_fallback_email_body(lead) -> str:
     )
 
 def generate_email_body(lead):
-    name = safe_str(lead.get('name', 'Prospect'))
-    company = safe_str(lead.get('company', 'your company'))
-    industry = safe_str(lead.get('industry', 'your industry'))
-    insight = safe_str(lead.get('verified_insight', f'recent trends in {industry}'))
+    name = safe_str(getattr(lead, 'name', 'Prospect'))
+    company = safe_str(getattr(lead, 'company', 'your company'))
+    industry = safe_str(getattr(lead, 'industry', 'your industry'))
+    insight = safe_str(getattr(lead, 'verified_insight', f'recent trends in {industry}'))
 
     prompt = f"""
 You are an expert SDR Agent. 
@@ -255,15 +266,17 @@ Output JSON:
 # -------------------------------------------------
 
 def run_sdr_agent():
-    leads = fetch_new_leads()
+    # Updated: Use fetch_leads_by_status("New") instead of fetch_new_leads
+    leads = fetch_leads_by_status("New")
 
-    if leads.empty:
+    if not leads:
         print("No new leads found.")
         return
 
-    for _, lead in leads.iterrows():
-        lead_id = lead["id"]
-        name = safe_str(lead.get('name', 'Prospect'))
+    # Iterating over list of objects, not DataFrame rows
+    for lead in leads:
+        lead_id = lead.id
+        name = safe_str(getattr(lead, 'name', 'Prospect'))
         
         print(f"\n🔍 Analyzing Lead: {name}...")
 

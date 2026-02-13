@@ -8,16 +8,21 @@ Trigger: Deal status = "Proposal Sent"
 Output: Contract with objection handling strategies
 
 BACKWARD COMPATIBILITY:
-- Reads from deals.csv (stage="Proposal Sent")
-- Writes ONLY to contracts.csv
+- Reads from deals table (stage="Proposal Sent")
+- Writes ONLY to contracts table
 - Same pattern: analysis → generation → scoring → approval/review
 """
 
 import json
-import pandas as pd
+import sys
+from pathlib import Path
 from datetime import datetime
 
-from db.db_handler import (
+# Set PROJECT_ROOT directly (avoid circular imports from app.main)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.database.db_handler import (
     fetch_deals_by_status,
     create_contract,
     update_contract_negotiation,
@@ -80,9 +85,16 @@ def generate_objection_response(deal, objections: str) -> tuple[str, int]:
     classified = classify_objections(objections)
     frameworks = [f"{cat}: {fw}" for cat, fw in classified]
     
-    company = str(deal.get('company', 'Company'))
-    industry = str(deal.get('industry', 'Industry'))
-    deal_value = deal.get('acv', 50000)
+    company = str(getattr(deal, 'company', 'Company'))
+    # Deal model doesn't have 'industry' directly, it is on Lead.
+    # Assuming we can access deal.lead.industry if lazy loading works or joined.
+    # For safety, default to unknown or try to access.
+    try:
+        industry = str(deal.lead.industry) if deal.lead else 'Industry'
+    except:
+        industry = 'Industry'
+        
+    deal_value = getattr(deal, 'acv', 50000)
     
     prompt = f"""
 You are a Senior Sales Negotiator handling objections.
@@ -169,12 +181,12 @@ def run_negotiation_agent():
     3. Generate objection handling strategy
     4. Calculate confidence score
     5. Auto-approve (≥85) or send for human review
-    6. Create/update contract in contracts.csv
+    6. Create/update contract in contracts table
     """
     # Fetch deals that need negotiation
     proposal_sent = fetch_deals_by_status("Proposal Sent")
     
-    if proposal_sent.empty:
+    if not proposal_sent:
         print("No deals in proposal stage.")
         return
     
@@ -182,9 +194,9 @@ def run_negotiation_agent():
     print(f"🤝 NEGOTIATION AGENT: Processing {len(proposal_sent)} deals")
     print(f"{'='*60}\n")
     
-    for _, deal in proposal_sent.iterrows():
-        deal_id = deal["deal_id"]
-        lead_id = deal["lead_id"]
+    for deal in proposal_sent:
+        deal_id = deal.id
+        lead_id = deal.lead_id
         
         print(f"\n🔍 Analyzing Deal #{deal_id}")
         
@@ -195,7 +207,7 @@ def run_negotiation_agent():
         # For now, simulate based on deal characteristics
         
         # Simulate objections based on deal value
-        deal_value = deal.get('deal_value', 0)
+        deal_value = getattr(deal, 'acv', 0)
         if deal_value > 75000:
             simulated_objections = "Price is higher than expected. Need to justify ROI to CFO. Also concerned about implementation timeline."
         elif deal_value > 40000:

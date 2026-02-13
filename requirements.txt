@@ -2,6 +2,10 @@
 pandas
 requests
 streamlit
+sqlalchemy
+psycopg2-binary
+faker
+python-dotenv
 
 # Optional: Memory layer (graceful degradation if missing)
 # Uncomment to enable vector/graph stores:
