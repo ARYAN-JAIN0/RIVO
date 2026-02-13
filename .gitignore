@@ -6,3 +6,9 @@ venv/
 *.db
 memory/chroma_db/
 nul
+
+# Local environment / secrets
+.env
+
+# Local backup artifacts
+backups/
