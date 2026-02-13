@@ -21,7 +21,8 @@ class Lead(Base):
 
     status = Column(String, default="New")
     last_contacted = Column(DateTime)
-
+    
+    signal_score = Column(Integer)
     confidence_score = Column(Integer)
     review_status = Column(String)
     draft_message = Column(Text)

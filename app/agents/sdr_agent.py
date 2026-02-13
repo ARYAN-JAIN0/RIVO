@@ -13,7 +13,8 @@ from app.database.db_handler import (
     fetch_leads_by_status,  # Was fetch_new_leads
     update_lead_status,
     save_draft,
-    mark_review_decision
+    mark_review_decision,
+    update_lead_signal_score
 )
 from app.services.llm_client import call_llm
 from config.sdr_profile import (
@@ -294,6 +295,7 @@ def run_sdr_agent():
         # GATE 2: Signal Strength Score
         # ----------------------------------------
         signal_score, reasons = calculate_signal_score(lead)
+        update_lead_signal_score(lead_id, signal_score)
         print(f"📊 Signal Score: {signal_score}/100")
         if reasons:
             print(f"   Matches: {', '.join(reasons)}")

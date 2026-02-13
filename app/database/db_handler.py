@@ -43,6 +43,19 @@ def update_lead_status(lead_id: int, status: str):
     finally:
         session.close()
 
+def update_lead_signal_score(lead_id: int, score: int):
+    session = SessionLocal()
+    try:
+        lead = session.query(Lead).filter(Lead.id == lead_id).first()
+        if lead:
+            lead.signal_score = score
+            session.commit()
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Error updating lead signal score {lead_id}: {e}")
+    finally:
+        session.close()
+
 def save_draft(lead_id: int, draft_message: str, score: float, status: str):
     session = SessionLocal()
     try:
