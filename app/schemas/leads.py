@@ -1,0 +1,2 @@
+"""Lead schema module."""
+

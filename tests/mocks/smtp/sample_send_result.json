@@ -1,0 +1,6 @@
+{
+  "provider": "smtp",
+  "recipient": "user@example.com",
+  "status": "sent",
+  "message_id": "mock-message-001"
+}

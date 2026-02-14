@@ -1,0 +1,7 @@
+{
+  "response": {
+    "text": "{\"email_body\":\"Hello from mock.\",\"confidence\":82}",
+    "model_name": "mock-model",
+    "latency_ms": 12
+  }
+}

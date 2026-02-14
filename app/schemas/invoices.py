@@ -1,0 +1,2 @@
+"""Invoice schema module."""
+

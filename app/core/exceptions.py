@@ -41,3 +41,15 @@ class AuthenticationError(RIVOException):
     """Raised when authentication fails."""
     
     pass
+
+
+class AuthorizationError(RIVOException):
+    """Raised when authorization checks fail."""
+
+    pass
+
+
+class DomainConflictError(RIVOException):
+    """Raised when a domain conflict occurs."""
+
+    pass
