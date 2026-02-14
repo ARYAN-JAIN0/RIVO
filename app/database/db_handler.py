@@ -16,7 +16,7 @@ from app.core.enums import (
     ReviewStatus,
 )
 from app.database.db import get_db_session
-from app.database.models import Contract, Deal, Invoice, Lead, ReviewAudit
+from app.database.models import AgentRun, Contract, Deal, DealStageAudit, EmailLog, Invoice, LLMLog, Lead, PromptTemplate, ReviewAudit, Tenant
 from utils.validators import sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -158,12 +158,18 @@ def create_deal(
 ) -> int:
     with get_db_session() as session:
         try:
+            lead = session.query(Lead).filter(Lead.id == lead_id).first()
+            tenant_id = getattr(lead, "tenant_id", 1) if lead else 1
             new_deal = Deal(
+                tenant_id=tenant_id,
                 lead_id=lead_id,
                 company=sanitize_text(company, max_len=300),
                 acv=acv,
+                deal_value=acv,
                 qualification_score=qualification_score,
                 stage=stage,
+                status="Open",
+                probability=float(qualification_score or 0),
                 notes=sanitize_text(notes, max_len=10000),
                 created_at=datetime.utcnow(),
                 last_updated=datetime.utcnow(),
@@ -489,3 +495,80 @@ def mark_dunning_decision(invoice_id: int, decision: str, actor: str = "human") 
             return
 
     _audit_review("invoice", invoice_id, decision, actor=actor)
+
+
+# ==============================================================================
+# PHASE 2 SUPPORT HELPERS
+# ==============================================================================
+
+
+def ensure_default_tenant() -> int:
+    with get_db_session() as session:
+        tenant = session.query(Tenant).filter(Tenant.id == 1).first()
+        if tenant:
+            return tenant.id
+        tenant = Tenant(id=1, name="default")
+        session.add(tenant)
+        session.commit()
+        return tenant.id
+
+
+def log_llm_interaction(agent_name: str, prompt_text: str, response_text: str, confidence_score: int | None = None, lead_id: int | None = None, tenant_id: int = 1, validation_status: str = "passed") -> None:
+    with get_db_session() as session:
+        try:
+            row = LLMLog(
+                tenant_id=tenant_id,
+                agent_name=agent_name,
+                lead_id=lead_id,
+                prompt_text=sanitize_text(prompt_text, max_len=20000),
+                response_text=sanitize_text(response_text, max_len=20000),
+                confidence_score=confidence_score,
+                validation_status=validation_status,
+            )
+            session.add(row)
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            logger.exception("llm.log.failed", extra={"event": "llm.log.failed", "agent_name": agent_name})
+
+
+def upsert_prompt_template(agent_name: str, template_key: str, template_body: str) -> int:
+    with get_db_session() as session:
+        row = session.query(PromptTemplate).filter(PromptTemplate.agent_name == agent_name, PromptTemplate.template_key == template_key).first()
+        if not row:
+            row = PromptTemplate(agent_name=agent_name, template_key=template_key, template_body=template_body)
+            session.add(row)
+        else:
+            row.template_body = template_body
+            row.updated_at = datetime.utcnow()
+        session.commit()
+        session.refresh(row)
+        return row.id
+
+
+def get_prompt_template(agent_name: str, template_key: str, default: str) -> str:
+    with get_db_session() as session:
+        row = session.query(PromptTemplate).filter(PromptTemplate.agent_name == agent_name, PromptTemplate.template_key == template_key, PromptTemplate.is_active == True).first()  # noqa: E712
+        if row:
+            return row.template_body
+        return default
+
+
+def fetch_agent_runs(limit: int = 100) -> list[AgentRun]:
+    with get_db_session() as session:
+        return session.query(AgentRun).order_by(AgentRun.created_at.desc()).limit(limit).all()
+
+
+def fetch_email_logs(limit: int = 100) -> list[EmailLog]:
+    with get_db_session() as session:
+        return session.query(EmailLog).order_by(EmailLog.created_at.desc()).limit(limit).all()
+
+
+
+def fetch_deal_stage_audit(deal_id: int) -> list[DealStageAudit]:
+    with get_db_session() as session:
+        try:
+            return session.query(DealStageAudit).filter(DealStageAudit.deal_id == deal_id).order_by(DealStageAudit.created_at.desc()).all()
+        except SQLAlchemyError:
+            logger.exception("deal.stage_audit.fetch_failed", extra={"event": "deal.stage_audit.fetch_failed", "deal_id": deal_id})
+            return []

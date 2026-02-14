@@ -1,20 +1,16 @@
-# Entry point (later FastAPI)
-from pathlib import Path
-import sys
+from __future__ import annotations
 
-# Ensure project root is importable when running `python app/main.py`
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_DIR = str(Path(__file__).resolve().parent)
-project_root_str = str(PROJECT_ROOT)
-if SCRIPT_DIR in sys.path:
-    sys.path.remove(SCRIPT_DIR)
-if project_root_str in sys.path:
-    sys.path.remove(project_root_str)
-sys.path.insert(0, project_root_str)
+from fastapi import FastAPI
 
-from app.agents.sdr_agent import run_sdr_agent
+from app.api.v1.router import api_router
 from app.core.startup import bootstrap
 
-if __name__ == "__main__":
+
+def create_app() -> FastAPI:
     bootstrap()
-    run_sdr_agent()
+    app = FastAPI(title="RIVO API", version="2.0.0")
+    app.include_router(api_router)
+    return app
+
+
+app = create_app()
