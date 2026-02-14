@@ -13,11 +13,15 @@ from app.core.enums import LeadStatus, ReviewStatus
 from app.core.schemas import SDREmailEvaluation, SDREmailGeneration, parse_schema
 from app.database.db_handler import (
     fetch_leads_by_status,
+    get_prompt_template,
+    log_llm_interaction,
     mark_review_decision,
     save_draft,
     update_lead_signal_score,
     update_lead_status,
 )
+from app.services.email_service import EmailService
+
 from app.services.llm_client import call_llm
 from config.sdr_profile import SDR_COMPANY, SDR_EMAIL, SDR_NAME, SDR_ROLE
 from utils.validators import deterministic_email_quality_score, sanitize_text, validate_structure
@@ -25,6 +29,7 @@ from utils.validators import deterministic_email_quality_score, sanitize_text, v
 logger = logging.getLogger(__name__)
 
 APPROVAL_THRESHOLD = 85
+AUTO_SEND_THRESHOLD = 92
 SIGNAL_THRESHOLD = 60
 PROMPT_VERSION = "sdr-v2.0"
 
@@ -107,7 +112,7 @@ def _generation_prompt(lead) -> str:
     company = safe_str(getattr(lead, "company", "your company"))
     industry = safe_str(getattr(lead, "industry", "your industry"))
     insight = safe_str(getattr(lead, "verified_insight", f"recent trends in {industry}"))
-    return f"""
+    default_template = f"""
 You are an expert SDR Agent.
 Prompt Version: {PROMPT_VERSION}
 Context:
@@ -123,11 +128,13 @@ Output JSON only:
   "email_body": "Email body only"
 }}
 """
+    return get_prompt_template("sdr", "cold_email_generation", default_template)
 
 
 def generate_email_body(lead) -> str:
     prompt = _generation_prompt(lead)
     response_text = call_llm(prompt, json_mode=True).strip()
+    log_llm_interaction("sdr", prompt, response_text, tenant_id=getattr(lead, "tenant_id", 1), lead_id=getattr(lead, "id", None))
     if not response_text:
         return build_fallback_email_body(lead)
 
@@ -182,6 +189,7 @@ Email:
 """
     llm_score = 0
     response = call_llm(prompt, json_mode=True).strip()
+    log_llm_interaction("sdr", prompt, response, tenant_id=getattr(lead, "tenant_id", 1), lead_id=getattr(lead, "id", None))
     if response:
         try:
             parsed = parse_schema(SDREmailEvaluation, response)
@@ -244,12 +252,29 @@ def run_sdr_agent() -> None:
             continue
 
         score = evaluate_email(final_email, lead)
-        # Human approval gate is preserved: drafts remain pending for explicit review.
-        save_draft(lead_id, final_email, score, ReviewStatus.PENDING.value)
-        logger.info(
-            "sdr.lead.draft_saved",
-            extra={"event": "sdr.lead.draft_saved", "lead_id": lead_id, "score": score, "approval_threshold": APPROVAL_THRESHOLD},
-        )
+        if score >= AUTO_SEND_THRESHOLD:
+            email_service = EmailService()
+            sent = email_service.send_email(
+                tenant_id=getattr(lead, "tenant_id", 1),
+                lead_id=lead_id,
+                to_email=safe_str(getattr(lead, "email", "")),
+                subject=f"Quick idea for {safe_str(getattr(lead, 'company', 'your team'))}",
+                html_body=f"<p>{final_email.replace(chr(10), '<br/>')}</p>",
+                text_body=final_email,
+            )
+            save_draft(lead_id, final_email, score, ReviewStatus.APPROVED.value if sent else ReviewStatus.PENDING.value)
+            if sent:
+                update_lead_status(lead_id, LeadStatus.CONTACTED.value)
+            logger.info(
+                "sdr.lead.auto_send_evaluated",
+                extra={"event": "sdr.lead.auto_send_evaluated", "lead_id": lead_id, "score": score, "sent": sent},
+            )
+        else:
+            save_draft(lead_id, final_email, score, ReviewStatus.PENDING.value)
+            logger.info(
+                "sdr.lead.draft_saved",
+                extra={"event": "sdr.lead.draft_saved", "lead_id": lead_id, "score": score, "approval_threshold": APPROVAL_THRESHOLD},
+            )
 
     logger.info("sdr.complete", extra={"event": "sdr.complete"})
 
