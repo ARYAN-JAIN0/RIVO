@@ -15,6 +15,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -112,6 +113,7 @@ class Lead(Base, SoftDeleteAuditMixin, TenantScopedMixin):
     __tablename__ = "leads"
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_leads_tenant_email"),
+        UniqueConstraint("tenant_id", "id", name="uq_leads_tenant_id_id"),
         Index("idx_leads_tenant_status", "tenant_id", "status"),
     )
 
@@ -146,12 +148,19 @@ class PipelineStage(Base, SoftDeleteAuditMixin, TenantScopedMixin):
 class Deal(Base, SoftDeleteAuditMixin, TenantScopedMixin):
     __tablename__ = "deals"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "lead_id"],
+            ["leads.tenant_id", "leads.id"],
+            ondelete="RESTRICT",
+            name="fk_deals_tenant_lead",
+        ),
+        UniqueConstraint("tenant_id", "id", name="uq_deals_tenant_id_id"),
         Index("idx_deals_tenant_stage", "tenant_id", "stage"),
         Index("idx_deals_tenant_lead", "tenant_id", "lead_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="RESTRICT"), nullable=False)
+    lead_id: Mapped[int] = mapped_column(Integer, nullable=False)
     company: Mapped[str | None] = mapped_column(String(255))
     acv: Mapped[float | None] = mapped_column(Numeric(12, 2))
     qualification_score: Mapped[int | None] = mapped_column(Integer)
@@ -163,10 +172,18 @@ class Deal(Base, SoftDeleteAuditMixin, TenantScopedMixin):
 
 class NegotiationHistory(Base, SoftDeleteAuditMixin, TenantScopedMixin):
     __tablename__ = "negotiation_history"
-    __table_args__ = (Index("idx_negotiation_history_tenant_contract", "tenant_id", "contract_id"),)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "contract_id"],
+            ["contracts.tenant_id", "contracts.id"],
+            ondelete="CASCADE",
+            name="fk_negotiation_history_tenant_contract",
+        ),
+        Index("idx_negotiation_history_tenant_contract", "tenant_id", "contract_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    contract_id: Mapped[int] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False)
+    contract_id: Mapped[int] = mapped_column(Integer, nullable=False)
     round_number: Mapped[int] = mapped_column(Integer, nullable=False)
     objections: Mapped[str | None] = mapped_column(Text)
     proposed_solutions: Mapped[str | None] = mapped_column(Text)
@@ -176,14 +193,27 @@ class NegotiationHistory(Base, SoftDeleteAuditMixin, TenantScopedMixin):
 class Contract(Base, SoftDeleteAuditMixin, TenantScopedMixin):
     __tablename__ = "contracts"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "deal_id"],
+            ["deals.tenant_id", "deals.id"],
+            ondelete="RESTRICT",
+            name="fk_contracts_tenant_deal",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "lead_id"],
+            ["leads.tenant_id", "leads.id"],
+            ondelete="RESTRICT",
+            name="fk_contracts_tenant_lead",
+        ),
         UniqueConstraint("tenant_id", "deal_id", name="uq_contracts_tenant_deal"),
+        UniqueConstraint("tenant_id", "id", name="uq_contracts_tenant_id_id"),
         Index("idx_contracts_tenant_status", "tenant_id", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     contract_code: Mapped[str | None] = mapped_column(String(64), unique=True)
-    deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id", ondelete="RESTRICT"), nullable=False)
-    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="RESTRICT"), nullable=False)
+    deal_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    lead_id: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[ContractStatus] = mapped_column(Enum(ContractStatus), default=ContractStatus.NEGOTIATING, nullable=False)
     contract_terms: Mapped[str | None] = mapped_column(Text)
     contract_value: Mapped[float | None] = mapped_column(Numeric(12, 2))
@@ -193,14 +223,26 @@ class Contract(Base, SoftDeleteAuditMixin, TenantScopedMixin):
 class Invoice(Base, SoftDeleteAuditMixin, TenantScopedMixin):
     __tablename__ = "invoices"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "contract_id"],
+            ["contracts.tenant_id", "contracts.id"],
+            ondelete="RESTRICT",
+            name="fk_invoices_tenant_contract",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "lead_id"],
+            ["leads.tenant_id", "leads.id"],
+            ondelete="RESTRICT",
+            name="fk_invoices_tenant_lead",
+        ),
         UniqueConstraint("tenant_id", "contract_id", name="uq_invoices_tenant_contract"),
         Index("idx_invoices_tenant_status", "tenant_id", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     invoice_code: Mapped[str | None] = mapped_column(String(64), unique=True)
-    contract_id: Mapped[int] = mapped_column(ForeignKey("contracts.id", ondelete="RESTRICT"), nullable=False)
-    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="RESTRICT"), nullable=False)
+    contract_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    lead_id: Mapped[int] = mapped_column(Integer, nullable=False)
     amount: Mapped[float | None] = mapped_column(Numeric(12, 2))
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[InvoiceStatus] = mapped_column(Enum(InvoiceStatus), default=InvoiceStatus.SENT, nullable=False)
