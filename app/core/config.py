@@ -42,8 +42,16 @@ class Config:
     SMTP_PORT: int
     SMTP_USERNAME: str | None
     SMTP_PASSWORD: str | None
+    JWT_SECRET: str
+    JWT_ACCESS_TTL_MINUTES: int
+    JWT_REFRESH_TTL_DAYS: int
+    JWT_PERMISSIONS_VERSION: int
+    REDIS_URL: str
+    CELERY_BROKER_URL: str
+    CELERY_RESULT_BACKEND: str
     API_HOST: str
     API_PORT: int
+    API_PREFIX: str
     LOG_LEVEL: str
     LOG_FILE: str
 
@@ -75,8 +83,16 @@ def _build_config(env: str | None = None) -> Config:
         SMTP_PORT=int(os.getenv("SMTP_PORT", "587")),
         SMTP_USERNAME=os.getenv("SMTP_USERNAME"),
         SMTP_PASSWORD=os.getenv("SMTP_PASSWORD"),
+        JWT_SECRET=os.getenv("JWT_SECRET", "change_me_jwt_secret"),
+        JWT_ACCESS_TTL_MINUTES=int(os.getenv("JWT_ACCESS_TTL_MINUTES", "15")),
+        JWT_REFRESH_TTL_DAYS=int(os.getenv("JWT_REFRESH_TTL_DAYS", "14")),
+        JWT_PERMISSIONS_VERSION=int(os.getenv("JWT_PERMISSIONS_VERSION", "1")),
+        REDIS_URL=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        CELERY_BROKER_URL=os.getenv("CELERY_BROKER_URL", os.getenv("REDIS_URL", "redis://localhost:6379/0")),
+        CELERY_RESULT_BACKEND=os.getenv("CELERY_RESULT_BACKEND", os.getenv("REDIS_URL", "redis://localhost:6379/0")),
         API_HOST=os.getenv("API_HOST", "0.0.0.0"),
         API_PORT=int(os.getenv("API_PORT", "8000")),
+        API_PREFIX=os.getenv("API_PREFIX", "/api/v1"),
         LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO").upper(),
         LOG_FILE=os.getenv("LOG_FILE", "rivo.log"),
     )
@@ -103,6 +119,10 @@ def _validate_config(config: Config) -> None:
         raise ConfigurationError("LLM_MAX_RETRIES must be >= 0.")
     if config.LLM_MIN_INTERVAL_SECONDS < 0:
         raise ConfigurationError("LLM_MIN_INTERVAL_SECONDS must be >= 0.")
+    if config.JWT_ACCESS_TTL_MINUTES < 1:
+        raise ConfigurationError("JWT_ACCESS_TTL_MINUTES must be >= 1.")
+    if config.JWT_REFRESH_TTL_DAYS < 1:
+        raise ConfigurationError("JWT_REFRESH_TTL_DAYS must be >= 1.")
     if config.LOG_LEVEL not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
         raise ConfigurationError("LOG_LEVEL must be one of DEBUG/INFO/WARNING/ERROR/CRITICAL.")
     if config.is_production and "change_me" in config.DATABASE_URL.lower():

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     Date,
     DateTime,
@@ -23,13 +24,17 @@ class Lead(Base):
     __table_args__ = (
         Index("idx_leads_status", "status"),
         Index("idx_leads_review_status", "review_status"),
+        UniqueConstraint("tenant_id", "email", name="uq_leads_tenant_email"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     name = Column(String, nullable=False)
-    email = Column(String, unique=True, nullable=False)
+    email = Column(String, nullable=False)
     role = Column(String)
     company = Column(String)
+    website = Column(String)
+    location = Column(String)
     company_size = Column(String)
     industry = Column(String)
     verified_insight = Column(Text)
@@ -40,9 +45,14 @@ class Lead(Base):
     confidence_score = Column(Integer)
     review_status = Column(String, default="New")
     draft_message = Column(Text)
+    source = Column(String, default="manual")
+    last_reply_at = Column(DateTime)
+    followup_count = Column(Integer, default=0)
+    next_followup_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     deals = relationship("Deal", back_populates="lead")
+    tenant = relationship("Tenant")
 
 
 class Deal(Base):
@@ -131,3 +141,80 @@ class ReviewAudit(Base):
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+
+class Tenant(Base):
+    __tablename__ = "tenants"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class EmailLog(Base):
+    __tablename__ = "email_logs"
+    __table_args__ = (
+        Index("idx_email_logs_lead", "lead_id"),
+        Index("idx_email_logs_status", "status"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False)
+    message_type = Column(String, nullable=False, default="outbound")
+    recipient_email = Column(String, nullable=False)
+    subject = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    tracking_id = Column(String, unique=True)
+    opened_at = Column(DateTime)
+    clicked_at = Column(DateTime)
+    status = Column(String, nullable=False, default="queued")
+    error_message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AgentRun(Base):
+    __tablename__ = "agent_runs"
+    __table_args__ = (
+        Index("idx_agent_runs_agent_status", "agent_name", "status"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    agent_name = Column(String, nullable=False)
+    task_id = Column(String, unique=True)
+    status = Column(String, nullable=False, default="queued")
+    started_at = Column(DateTime)
+    finished_at = Column(DateTime)
+    duration_ms = Column(Integer)
+    error_message = Column(Text)
+    triggered_by = Column(String, default="api")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PromptTemplate(Base):
+    __tablename__ = "prompt_templates"
+    __table_args__ = (
+        UniqueConstraint("agent_name", "template_key", name="uq_prompt_template_agent_key"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    agent_name = Column(String, nullable=False)
+    template_key = Column(String, nullable=False)
+    template_body = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class LLMLog(Base):
+    __tablename__ = "llm_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    agent_name = Column(String, nullable=False)
+    lead_id = Column(Integer, ForeignKey("leads.id"))
+    prompt_text = Column(Text, nullable=False)
+    response_text = Column(Text, nullable=False)
+    confidence_score = Column(Integer)
+    validation_status = Column(String, default="passed")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -8,6 +8,36 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rivo
+          POSTGRES_PASSWORD: rivo
+          POSTGRES_DB: rivo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rivo -d rivo"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ENV: development
+      DATABASE_URL: postgresql+psycopg2://rivo:rivo@localhost:5432/rivo
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/0
+      JWT_SECRET: ci-jwt-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,6 +47,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run tests
-        run: pytest -q
-
+      - name: Lint (syntax)
+        run: python -m compileall app tests
+      - name: Unit tests
+        run: |
+          pytest -q tests/unit tests/test_db_handler.py tests/test_orchestrator.py tests/test_orm_utils.py tests/test_validators.py
+      - name: Integration tests
+        run: |
+          pytest -q tests/integration tests/test_pipeline_integration_scaffold.py
+      - name: Migration checks
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head

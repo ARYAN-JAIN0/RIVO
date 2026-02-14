@@ -1,20 +1,32 @@
-# Entry point (later FastAPI)
-from pathlib import Path
-import sys
+from __future__ import annotations
 
-# Ensure project root is importable when running `python app/main.py`
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_DIR = str(Path(__file__).resolve().parent)
-project_root_str = str(PROJECT_ROOT)
-if SCRIPT_DIR in sys.path:
-    sys.path.remove(SCRIPT_DIR)
-if project_root_str in sys.path:
-    sys.path.remove(project_root_str)
-sys.path.insert(0, project_root_str)
+"""Application entrypoint for FastAPI and legacy CLI execution."""
+
+from fastapi import FastAPI
 
 from app.agents.sdr_agent import run_sdr_agent
+from app.api.v1.router import api_router
+from app.core.config import get_config
 from app.core.startup import bootstrap
 
-if __name__ == "__main__":
+
+def create_app() -> FastAPI:
+    """Create configured ASGI application."""
     bootstrap()
+    cfg = get_config()
+    app = FastAPI(title=cfg.APP_NAME, version=cfg.APP_VERSION)
+    app.include_router(api_router)
+
+    @app.get("/")
+    def root() -> dict:
+        return {"service": cfg.APP_NAME, "version": cfg.APP_VERSION, "api_prefix": cfg.API_PREFIX}
+
+    return app
+
+
+app = create_app()
+
+
+if __name__ == "__main__":
+    # Legacy compatibility path retained during migration window.
     run_sdr_agent()
