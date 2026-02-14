@@ -46,11 +46,20 @@ def upgrade() -> None:
 
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    for constraint in inspector.get_unique_constraints("leads"):
-        cols = tuple(constraint.get("column_names") or ())
-        name = constraint.get("name")
-        if cols == ("email",) and name:
-            op.drop_constraint(name, "leads", type_="unique")
+    unique_constraints = inspector.get_unique_constraints("leads")
+    lead_email_constraint_names = {
+        constraint.get("name")
+        for constraint in unique_constraints
+        if tuple(constraint.get("column_names") or ()) == ("email",)
+    }
+
+    # Baseline schema used a named single-column uniqueness guard.
+    if "uq_leads_email" in lead_email_constraint_names:
+        op.drop_constraint("uq_leads_email", "leads", type_="unique")
+    else:
+        for name in lead_email_constraint_names:
+            if name:
+                op.drop_constraint(name, "leads", type_="unique")
     op.create_unique_constraint(LEADS_TENANT_EMAIL_UNIQUE, "leads", ["tenant_id", "email"])
 
     op.create_table(
