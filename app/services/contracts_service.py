@@ -6,5 +6,8 @@ from app.services.contract_service import ContractService
 
 
 class ContractsService(ContractService):
-    """Pluralized service name used by the target backend layout."""
+    """Pluralized facade kept for target layout compatibility.
 
+    Existing callers can import `ContractService` or `ContractsService`
+    interchangeably during the migration window.
+    """
