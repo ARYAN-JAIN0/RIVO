@@ -14,37 +14,36 @@ class UserRole(str, enum.Enum):
 
 
 class LeadStatus(str, enum.Enum):
-    NEW = "new"
-    CONTACTED = "contacted"
-    QUALIFIED = "qualified"
-    DISQUALIFIED = "disqualified"
+    NEW = "New"
+    CONTACTED = "Contacted"
+    QUALIFIED = "Qualified"
+    DISQUALIFIED = "Disqualified"
 
 
 class DealStage(str, enum.Enum):
-    QUALIFIED = "qualified"
-    PROPOSAL_SENT = "proposal_sent"
-    WON = "won"
-    LOST = "lost"
+    QUALIFIED = "Qualified"
+    PROPOSAL_SENT = "Proposal Sent"
+    WON = "Won"
+    LOST = "Lost"
 
 
 class ContractStatus(str, enum.Enum):
-    NEGOTIATING = "negotiating"
-    SIGNED = "signed"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    NEGOTIATING = "Negotiating"
+    SIGNED = "Signed"
+    COMPLETED = "Completed"
+    CANCELLED = "Cancelled"
 
 
 class InvoiceStatus(str, enum.Enum):
-    SENT = "sent"
-    PAID = "paid"
-    OVERDUE = "overdue"
-    VOID = "void"
+    SENT = "Sent"
+    PAID = "Paid"
+    OVERDUE = "Overdue"
+    VOID = "Void"
 
 
 class RunStatus(str, enum.Enum):
-    QUEUED = "queued"
-    RUNNING = "running"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
+    QUEUED = "Queued"
+    RUNNING = "Running"
+    SUCCEEDED = "Succeeded"
+    FAILED = "Failed"
+    CANCELLED = "Cancelled"

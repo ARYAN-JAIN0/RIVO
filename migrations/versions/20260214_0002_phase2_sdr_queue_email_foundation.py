@@ -21,6 +21,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    dialect_name = bind.dialect.name
+
     op.create_table(
         "tenants",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -33,25 +36,37 @@ def upgrade() -> None:
 
     op.execute("INSERT INTO tenants (id, name, is_active, created_at) VALUES (1, 'default', true, CURRENT_TIMESTAMP)")
 
-    op.add_column("leads", sa.Column("tenant_id", sa.Integer(), nullable=True, server_default="1"))
-    op.add_column("leads", sa.Column("website", sa.String(), nullable=True))
-    op.add_column("leads", sa.Column("location", sa.String(), nullable=True))
-    op.add_column("leads", sa.Column("source", sa.String(), nullable=True, server_default="manual"))
-    op.add_column("leads", sa.Column("last_reply_at", sa.DateTime(), nullable=True))
-    op.add_column("leads", sa.Column("followup_count", sa.Integer(), nullable=True, server_default="0"))
-    op.add_column("leads", sa.Column("next_followup_at", sa.DateTime(), nullable=True))
-    op.create_index("ix_leads_tenant_id", "leads", ["tenant_id"])
-    op.create_foreign_key("fk_leads_tenant_id", "leads", "tenants", ["tenant_id"], ["id"])
-    op.alter_column("leads", "tenant_id", nullable=False)
+    if dialect_name == "sqlite":
+        # SQLite does not support ALTER CONSTRAINT operations directly.
+        # Use batch mode to add Phase 2 enrichment columns in local/dev fallback.
+        with op.batch_alter_table("leads", recreate="auto") as batch_op:
+            batch_op.add_column(sa.Column("tenant_id", sa.Integer(), nullable=True, server_default="1"))
+            batch_op.add_column(sa.Column("website", sa.String(), nullable=True))
+            batch_op.add_column(sa.Column("location", sa.String(), nullable=True))
+            batch_op.add_column(sa.Column("source", sa.String(), nullable=True, server_default="manual"))
+            batch_op.add_column(sa.Column("last_reply_at", sa.DateTime(), nullable=True))
+            batch_op.add_column(sa.Column("followup_count", sa.Integer(), nullable=True, server_default="0"))
+            batch_op.add_column(sa.Column("next_followup_at", sa.DateTime(), nullable=True))
+            batch_op.create_index("ix_leads_tenant_id", ["tenant_id"], unique=False)
+    else:
+        op.add_column("leads", sa.Column("tenant_id", sa.Integer(), nullable=True, server_default="1"))
+        op.add_column("leads", sa.Column("website", sa.String(), nullable=True))
+        op.add_column("leads", sa.Column("location", sa.String(), nullable=True))
+        op.add_column("leads", sa.Column("source", sa.String(), nullable=True, server_default="manual"))
+        op.add_column("leads", sa.Column("last_reply_at", sa.DateTime(), nullable=True))
+        op.add_column("leads", sa.Column("followup_count", sa.Integer(), nullable=True, server_default="0"))
+        op.add_column("leads", sa.Column("next_followup_at", sa.DateTime(), nullable=True))
+        op.create_index("ix_leads_tenant_id", "leads", ["tenant_id"])
+        op.create_foreign_key("fk_leads_tenant_id", "leads", "tenants", ["tenant_id"], ["id"])
+        op.alter_column("leads", "tenant_id", nullable=False)
 
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    for constraint in inspector.get_unique_constraints("leads"):
-        cols = tuple(constraint.get("column_names") or ())
-        name = constraint.get("name")
-        if cols == ("email",) and name:
-            op.drop_constraint(name, "leads", type_="unique")
-    op.create_unique_constraint(LEADS_TENANT_EMAIL_UNIQUE, "leads", ["tenant_id", "email"])
+        inspector = sa.inspect(bind)
+        for constraint in inspector.get_unique_constraints("leads"):
+            cols = tuple(constraint.get("column_names") or ())
+            name = constraint.get("name")
+            if cols == ("email",) and name:
+                op.drop_constraint(name, "leads", type_="unique")
+        op.create_unique_constraint(LEADS_TENANT_EMAIL_UNIQUE, "leads", ["tenant_id", "email"])
 
     op.create_table(
         "email_logs",
@@ -125,6 +140,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    dialect_name = bind.dialect.name
+
     op.drop_table("llm_logs")
     op.drop_table("prompt_templates")
     op.drop_index("idx_agent_runs_agent_status", table_name="agent_runs")
@@ -133,17 +151,28 @@ def downgrade() -> None:
     op.drop_index("idx_email_logs_lead", table_name="email_logs")
     op.drop_table("email_logs")
 
-    op.drop_constraint(LEADS_TENANT_EMAIL_UNIQUE, "leads", type_="unique")
-    op.create_unique_constraint("uq_leads_email", "leads", ["email"])
+    if dialect_name == "sqlite":
+        with op.batch_alter_table("leads", recreate="auto") as batch_op:
+            batch_op.drop_index("ix_leads_tenant_id")
+            batch_op.drop_column("next_followup_at")
+            batch_op.drop_column("followup_count")
+            batch_op.drop_column("last_reply_at")
+            batch_op.drop_column("source")
+            batch_op.drop_column("location")
+            batch_op.drop_column("website")
+            batch_op.drop_column("tenant_id")
+    else:
+        op.drop_constraint(LEADS_TENANT_EMAIL_UNIQUE, "leads", type_="unique")
+        op.create_unique_constraint("uq_leads_email", "leads", ["email"])
 
-    op.drop_constraint("fk_leads_tenant_id", "leads", type_="foreignkey")
-    op.drop_index("ix_leads_tenant_id", table_name="leads")
-    op.drop_column("leads", "next_followup_at")
-    op.drop_column("leads", "followup_count")
-    op.drop_column("leads", "last_reply_at")
-    op.drop_column("leads", "source")
-    op.drop_column("leads", "location")
-    op.drop_column("leads", "website")
-    op.drop_column("leads", "tenant_id")
+        op.drop_constraint("fk_leads_tenant_id", "leads", type_="foreignkey")
+        op.drop_index("ix_leads_tenant_id", table_name="leads")
+        op.drop_column("leads", "next_followup_at")
+        op.drop_column("leads", "followup_count")
+        op.drop_column("leads", "last_reply_at")
+        op.drop_column("leads", "source")
+        op.drop_column("leads", "location")
+        op.drop_column("leads", "website")
+        op.drop_column("leads", "tenant_id")
 
     op.drop_table("tenants")

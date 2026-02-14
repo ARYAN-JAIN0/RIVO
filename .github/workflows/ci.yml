@@ -55,6 +55,9 @@ jobs:
       - name: Integration tests
         run: |
           pytest -q tests/integration tests/test_pipeline_integration_scaffold.py
+      - name: Phase 2 tests
+        run: |
+          pytest -q tests/test_phase2_services.py tests/test_phase2_api.py
       - name: Migration checks
         run: |
           alembic upgrade head
