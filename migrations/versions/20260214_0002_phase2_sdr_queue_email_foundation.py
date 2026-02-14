@@ -11,6 +11,9 @@ from alembic import op
 import sqlalchemy as sa
 
 
+LEADS_TENANT_EMAIL_UNIQUE = "uq_leads_tenant_email"
+
+
 revision = "20260214_0002"
 down_revision = "20260213_0001"
 branch_labels = None
@@ -40,6 +43,15 @@ def upgrade() -> None:
     op.create_index("ix_leads_tenant_id", "leads", ["tenant_id"])
     op.create_foreign_key("fk_leads_tenant_id", "leads", "tenants", ["tenant_id"], ["id"])
     op.alter_column("leads", "tenant_id", nullable=False)
+
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    for constraint in inspector.get_unique_constraints("leads"):
+        cols = tuple(constraint.get("column_names") or ())
+        name = constraint.get("name")
+        if cols == ("email",) and name:
+            op.drop_constraint(name, "leads", type_="unique")
+    op.create_unique_constraint(LEADS_TENANT_EMAIL_UNIQUE, "leads", ["tenant_id", "email"])
 
     op.create_table(
         "email_logs",
@@ -120,6 +132,9 @@ def downgrade() -> None:
     op.drop_index("idx_email_logs_status", table_name="email_logs")
     op.drop_index("idx_email_logs_lead", table_name="email_logs")
     op.drop_table("email_logs")
+
+    op.drop_constraint(LEADS_TENANT_EMAIL_UNIQUE, "leads", type_="unique")
+    op.create_unique_constraint("uq_leads_email", "leads", ["email"])
 
     op.drop_constraint("fk_leads_tenant_id", "leads", type_="foreignkey")
     op.drop_index("ix_leads_tenant_id", table_name="leads")
