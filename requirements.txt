@@ -1,28 +1,20 @@
-# Core dependencies (required)
-pandas
-requests
-streamlit
-sqlalchemy
-psycopg2-binary
-faker
-python-dotenv
-pydantic>=2.8,<3
+# Core runtime
 alembic>=1.13,<2
-pytest>=8,<9
-fastapi>=0.115,<1
-uvicorn>=0.30,<1
-celery>=5.4,<6
-redis>=5,<6
-
-# Optional: Memory layer (graceful degradation if missing)
-# Uncomment to enable vector/graph stores:
-# chromadb
-# networkx
-
-# Optional: Invoice PDF generation
-# reportlab
-fastapi>=0.115,<1
-uvicorn>=0.30,<1
-celery>=5.4,<6
-redis>=5,<6
 beautifulsoup4>=4.12,<5
+celery>=5.4,<6
+faker
+fastapi>=0.115,<1
+pandas
+pgvector>=0.4,<1
+psycopg2-binary
+pydantic>=2.8,<3
+python-dotenv
+redis>=5,<6
+reportlab>=4,<5
+requests
+sqlalchemy
+streamlit
+uvicorn>=0.30,<1
+
+# Test/runtime checks
+pytest>=8,<9

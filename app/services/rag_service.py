@@ -40,25 +40,56 @@ class RAGService:
     def ingest_knowledge(self, tenant_id: int, entity_type: str, entity_id: int, title: str, content: str, source: str = "sales_agent") -> int:
         vector = _hash_embed(content)
         with get_db_session() as session:
-            kb = KnowledgeBase(
-                tenant_id=tenant_id,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                title=title,
-                content=content,
-                source=source,
+            matches = (
+                session.query(KnowledgeBase)
+                .filter(KnowledgeBase.tenant_id == tenant_id)
+                .filter(KnowledgeBase.entity_type == entity_type)
+                .filter(KnowledgeBase.entity_id == entity_id)
+                .filter(KnowledgeBase.title == title)
+                .filter(KnowledgeBase.content == content)
+                .filter(KnowledgeBase.source == source)
+                .order_by(KnowledgeBase.id.asc())
+                .all()
             )
-            session.add(kb)
-            session.commit()
-            session.refresh(kb)
 
-            emb = Embedding(
-                tenant_id=tenant_id,
-                knowledge_base_id=kb.id,
-                vector=json.dumps(vector),
-                model="hash-embedding-v1",
+            kb: KnowledgeBase
+            if matches:
+                kb = matches[0]
+                # Cleanup stale duplicates from previous runs to keep retrieval quality stable.
+                stale_ids = [row.id for row in matches[1:]]
+                if stale_ids:
+                    session.query(Embedding).filter(Embedding.knowledge_base_id.in_(stale_ids)).delete(synchronize_session=False)
+                    session.query(KnowledgeBase).filter(KnowledgeBase.id.in_(stale_ids)).delete(synchronize_session=False)
+            else:
+                kb = KnowledgeBase(
+                    tenant_id=tenant_id,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    title=title,
+                    content=content,
+                    source=source,
+                )
+                session.add(kb)
+                session.flush()
+
+            emb = (
+                session.query(Embedding)
+                .filter(Embedding.tenant_id == tenant_id)
+                .filter(Embedding.knowledge_base_id == kb.id)
+                .filter(Embedding.model == "hash-embedding-v1")
+                .first()
             )
-            session.add(emb)
+            if not emb:
+                emb = Embedding(
+                    tenant_id=tenant_id,
+                    knowledge_base_id=kb.id,
+                    vector=json.dumps(vector),
+                    model="hash-embedding-v1",
+                )
+                session.add(emb)
+            else:
+                emb.vector = json.dumps(vector)
+
             session.commit()
             return kb.id
 

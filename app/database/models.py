@@ -94,6 +94,78 @@ class Deal(Base):
     tenant = relationship("Tenant")
 
 
+class DealStageAudit(Base):
+    __tablename__ = "deal_stage_audit"
+    __table_args__ = (
+        Index("idx_deal_stage_audit_deal", "deal_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
+    old_stage = Column(String, nullable=False)
+    new_stage = Column(String, nullable=False)
+    actor = Column(String, nullable=False, default="system")
+    reason = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    deal = relationship("Deal")
+    tenant = relationship("Tenant")
+
+
+class KnowledgeBase(Base):
+    __tablename__ = "knowledge_base"
+    __table_args__ = (
+        Index("idx_knowledge_base_tenant_entity", "tenant_id", "entity_type", "entity_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    entity_type = Column(String, nullable=False)
+    entity_id = Column(Integer, nullable=False)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    source = Column(String, nullable=False, default="system")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    tenant = relationship("Tenant")
+
+
+class Embedding(Base):
+    __tablename__ = "embeddings"
+    __table_args__ = (
+        Index("idx_embeddings_knowledge_base", "knowledge_base_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    knowledge_base_id = Column(Integer, ForeignKey("knowledge_base.id"), nullable=False)
+    vector = Column(Text, nullable=False)
+    model = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    knowledge_base = relationship("KnowledgeBase")
+    tenant = relationship("Tenant")
+
+
+class NegotiationMemory(Base):
+    __tablename__ = "negotiation_memory"
+    __table_args__ = (
+        Index("idx_negotiation_memory_deal", "deal_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
+    transcript = Column(Text, nullable=False)
+    summary = Column(Text)
+    objection_tags = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    deal = relationship("Deal")
+    tenant = relationship("Tenant")
+
+
 class Contract(Base):
     __tablename__ = "contracts"
     __table_args__ = (

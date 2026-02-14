@@ -98,7 +98,10 @@ class SalesIntelligenceService:
             deal.margin = margin_result.margin
             deal.segment_tag = segment
             deal.forecast_month = deal.expected_close_date.strftime("%Y-%m")
-            deal.notes = (deal.notes or "") + "\n[phase3] probability and margin refreshed"
+            phase3_note = "[phase3] probability and margin refreshed"
+            existing_notes = deal.notes or ""
+            if phase3_note not in existing_notes:
+                deal.notes = f"{existing_notes.rstrip()}\n{phase3_note}".strip()
             deal.last_updated = datetime.utcnow()
 
             session.commit()
