@@ -47,6 +47,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     unique_constraints = inspector.get_unique_constraints("leads")
+    unique_indexes = inspector.get_indexes("leads")
     lead_email_constraint_names = {
         constraint.get("name")
         for constraint in unique_constraints
@@ -60,6 +61,17 @@ def upgrade() -> None:
         for name in lead_email_constraint_names:
             if name:
                 op.drop_constraint(name, "leads", type_="unique")
+
+    # Some engines expose legacy single-column uniqueness as a unique index.
+    lead_email_unique_index_names = {
+        index.get("name")
+        for index in unique_indexes
+        if index.get("unique") and tuple(index.get("column_names") or ()) == ("email",)
+    }
+    for name in lead_email_unique_index_names:
+        if name:
+            op.drop_index(name, table_name="leads")
+
     op.create_unique_constraint(LEADS_TENANT_EMAIL_UNIQUE, "leads", ["tenant_id", "email"])
 
     op.create_table(
