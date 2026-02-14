@@ -224,58 +224,6 @@ class PromptTemplate(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
-class DealStageAudit(Base):
-    __tablename__ = "deal_stage_audit"
-    __table_args__ = (
-        Index("idx_deal_stage_audit_deal", "deal_id"),
-    )
-
-    id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
-    deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
-    old_stage = Column(String, nullable=False)
-    new_stage = Column(String, nullable=False)
-    actor = Column(String, nullable=False, default="system")
-    reason = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
-class KnowledgeBase(Base):
-    __tablename__ = "knowledge_base"
-
-    id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
-    entity_type = Column(String, nullable=False)
-    entity_id = Column(Integer, nullable=False)
-    title = Column(String, nullable=False)
-    content = Column(Text, nullable=False)
-    source = Column(String, nullable=False, default="sales_agent")
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
-class Embedding(Base):
-    __tablename__ = "embeddings"
-
-    id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
-    knowledge_base_id = Column(Integer, ForeignKey("knowledge_base.id"), nullable=False)
-    vector = Column(Text, nullable=False)
-    model = Column(String, nullable=False, default="hash-embedding-v1")
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
-class NegotiationMemory(Base):
-    __tablename__ = "negotiation_memory"
-
-    id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
-    deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
-    transcript = Column(Text, nullable=False)
-    summary = Column(Text)
-    objection_tags = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-
 class LLMLog(Base):
     __tablename__ = "llm_logs"
 

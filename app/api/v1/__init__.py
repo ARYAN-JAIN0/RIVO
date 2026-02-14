@@ -1,3 +1,5 @@
-from app.api.v1.endpoints import router
+"""Version 1 API package."""
 
-__all__ = ["router"]
+from app.api.v1.router import api_router, get_api_router
+
+__all__ = ["api_router", "get_api_router"]

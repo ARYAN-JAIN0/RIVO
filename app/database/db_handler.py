@@ -16,7 +16,7 @@ from app.core.enums import (
     ReviewStatus,
 )
 from app.database.db import get_db_session
-from app.database.models import AgentRun, Contract, Deal, DealStageAudit, EmailLog, Invoice, LLMLog, Lead, PromptTemplate, ReviewAudit, Tenant
+from app.database.models import AgentRun, Contract, Deal, EmailLog, Invoice, LLMLog, Lead, PromptTemplate, ReviewAudit, Tenant
 from utils.validators import sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -562,13 +562,3 @@ def fetch_agent_runs(limit: int = 100) -> list[AgentRun]:
 def fetch_email_logs(limit: int = 100) -> list[EmailLog]:
     with get_db_session() as session:
         return session.query(EmailLog).order_by(EmailLog.created_at.desc()).limit(limit).all()
-
-
-
-def fetch_deal_stage_audit(deal_id: int) -> list[DealStageAudit]:
-    with get_db_session() as session:
-        try:
-            return session.query(DealStageAudit).filter(DealStageAudit.deal_id == deal_id).order_by(DealStageAudit.created_at.desc()).all()
-        except SQLAlchemyError:
-            logger.exception("deal.stage_audit.fetch_failed", extra={"event": "deal.stage_audit.fetch_failed", "deal_id": deal_id})
-            return []
