@@ -96,6 +96,7 @@ class User(Base, SoftDeleteAuditMixin, TenantScopedMixin):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
+        UniqueConstraint("tenant_id", "id", name="uq_users_tenant_id_id"),
         Index("idx_users_tenant_role", "tenant_id", "role"),
     )
 
@@ -134,14 +135,22 @@ class Lead(Base, SoftDeleteAuditMixin, TenantScopedMixin):
 
 class PipelineStage(Base, SoftDeleteAuditMixin, TenantScopedMixin):
     __tablename__ = "pipeline_stages"
-    __table_args__ = (Index("idx_pipeline_stage_tenant_entity", "tenant_id", "entity_type", "entity_id"),)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "changed_by_user_id"],
+            ["users.tenant_id", "users.id"],
+            ondelete="SET NULL",
+            name="fk_pipeline_stages_tenant_changed_by_user",
+        ),
+        Index("idx_pipeline_stage_tenant_entity", "tenant_id", "entity_type", "entity_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
     stage_name: Mapped[str] = mapped_column(String(100), nullable=False)
     stage_status: Mapped[str] = mapped_column(String(50), nullable=False)
-    changed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    changed_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     change_reason: Mapped[str | None] = mapped_column(Text)
 
 
@@ -268,7 +277,10 @@ class EmailLog(Base, SoftDeleteAuditMixin, TenantScopedMixin):
 
 class AgentRun(Base, SoftDeleteAuditMixin, TenantScopedMixin):
     __tablename__ = "agent_runs"
-    __table_args__ = (Index("idx_agent_runs_tenant_status", "tenant_id", "status"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_agent_runs_tenant_id_id"),
+        Index("idx_agent_runs_tenant_status", "tenant_id", "status"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     agent_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -284,10 +296,18 @@ class AgentRun(Base, SoftDeleteAuditMixin, TenantScopedMixin):
 
 class LLMLog(Base, SoftDeleteAuditMixin, TenantScopedMixin):
     __tablename__ = "llm_logs"
-    __table_args__ = (Index("idx_llm_logs_tenant_model", "tenant_id", "model_name"),)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "agent_run_id"],
+            ["agent_runs.tenant_id", "agent_runs.id"],
+            ondelete="SET NULL",
+            name="fk_llm_logs_tenant_agent_run",
+        ),
+        Index("idx_llm_logs_tenant_model", "tenant_id", "model_name"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id", ondelete="SET NULL"))
+    agent_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model_name: Mapped[str] = mapped_column(String(120), nullable=False)
     prompt_template_key: Mapped[str] = mapped_column(String(120), nullable=False)
     prompt_hash: Mapped[str] = mapped_column(String(128), nullable=False)
