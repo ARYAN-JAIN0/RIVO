@@ -1,342 +1,258 @@
-import json
-import re
-import sys
-from pathlib import Path
-from datetime import datetime
+from __future__ import annotations
 
-# Set PROJECT_ROOT directly (avoid circular imports from app.main)
+import json
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Updated imports for ORM-based db_handler
+from app.core.enums import LeadStatus, ReviewStatus
+from app.core.schemas import SDREmailEvaluation, SDREmailGeneration, parse_schema
 from app.database.db_handler import (
-    fetch_leads_by_status,  # Was fetch_new_leads
-    update_lead_status,
-    save_draft,
+    fetch_leads_by_status,
     mark_review_decision,
-    update_lead_signal_score
+    save_draft,
+    update_lead_signal_score,
+    update_lead_status,
 )
 from app.services.llm_client import call_llm
-from config.sdr_profile import (
-    SDR_NAME,
-    SDR_COMPANY,
-    SDR_ROLE,
-    SDR_EMAIL
-)
+from config.sdr_profile import SDR_COMPANY, SDR_EMAIL, SDR_NAME, SDR_ROLE
+from utils.validators import deterministic_email_quality_score, sanitize_text, validate_structure
 
-# Configuration
+logger = logging.getLogger(__name__)
+
 APPROVAL_THRESHOLD = 85
 SIGNAL_THRESHOLD = 60
+PROMPT_VERSION = "sdr-v2.0"
 
-# -------------------------------------------------
-# 0. UTILITY & SAFETY HELPERS
-# -------------------------------------------------
 
-def safe_str(val) -> str:
-    """Safely converts values (None, etc) to empty string."""
-    if val is None:
-        return ""
-    return str(val).strip()
+def safe_str(val: object | None) -> str:
+    return sanitize_text("" if val is None else str(val), max_len=2000)
 
-# -------------------------------------------------
-# 1. SIGNAL & GATE LOGIC (DETERMINISTIC ROI)
-# -------------------------------------------------
 
 def check_negative_gate(lead) -> tuple[bool, str]:
-    """
-    Gate 1: Hard blocks. Returns (IsBlocked, Reason).
-    Checks for layoffs, competitors, high-risk sectors, or recent contact.
-    """
-    # ORM object access
-    neg_signals = safe_str(getattr(lead, 'negative_signals', '')).lower()
-    industry = safe_str(getattr(lead, 'industry', '')).lower()
-    last_contacted = getattr(lead, 'last_contacted', None)
+    neg_signals = safe_str(getattr(lead, "negative_signals", "")).lower()
+    industry = safe_str(getattr(lead, "industry", "")).lower()
+    last_contacted = getattr(lead, "last_contacted", None)
 
-    # 1. Critical Business Risks
-    if 'layoff' in neg_signals:
-        return True, "Recent Layoffs detected"
-    if 'competitor' in neg_signals:
-        return True, "Competitor signed recently"
+    if "layoff" in neg_signals:
+        return True, "Recent layoffs detected"
+    if "competitor" in neg_signals:
+        return True, "Competitor lock-in risk"
 
-    # 2. Sector Risks (Cold outreach to these is often flagged)
-    forbidden_sectors = ['government', 'academic', 'education', 'non-profit', 'ngo']
+    forbidden_sectors = ["government", "academic", "education", "non-profit", "ngo"]
     if any(sec in industry for sec in forbidden_sectors):
-        return True, "High-Risk Sector (Gov/Edu)"
+        return True, "High-risk outreach sector"
 
-    # 3. Frequency Cap (Prevent spamming)
     if last_contacted:
         try:
-            # last_contacted is likely a datetime object from ORM
-            if isinstance(last_contacted, str):
-                last_date = datetime.strptime(last_contacted, '%Y-%m-%d')
-            else:
-                last_date = last_contacted
-                
-            delta = (datetime.now() - last_date).days
+            last_date = (
+                datetime.strptime(last_contacted, "%Y-%m-%d")
+                if isinstance(last_contacted, str)
+                else last_contacted
+            )
+            delta = (datetime.utcnow() - last_date).days
             if delta < 30:
-                return True, f"Contacted {delta} days ago (<30 limit)"
+                return True, f"Recently contacted ({delta} days ago)"
         except (ValueError, TypeError):
-            # If date is malformed, ignore it (safer than crashing)
             pass
 
     return False, ""
 
 
-def calculate_signal_score(lead) -> tuple[int, list]:
-    """
-    Gate 2: Signal Strength. Returns (Score, BreakdownList).
-    """
+def calculate_signal_score(lead) -> tuple[int, list[str]]:
     score = 0
-    reasons = []
-    
-    insight = safe_str(getattr(lead, 'verified_insight', '')).lower()
-    role = safe_str(getattr(lead, 'role', '')).lower()
-    size = safe_str(getattr(lead, 'company_size', '')).lower()
-    
-    # 1. Intent Signals (+30 / +25)
-    if 'hiring' in insight or 'growing' in insight or 'expanding' in insight:
+    reasons: list[str] = []
+    insight = safe_str(getattr(lead, "verified_insight", "")).lower()
+    role = safe_str(getattr(lead, "role", "")).lower()
+    size = safe_str(getattr(lead, "company_size", "")).lower()
+
+    if any(k in insight for k in ["hiring", "growing", "expanding"]):
         score += 30
-        reasons.append("Hiring/Growth (+30)")
-    if 'tech' in insight or 'install' in insight or 'stack' in insight or 'migration' in insight:
+        reasons.append("growth-signal")
+    if any(k in insight for k in ["tech", "install", "stack", "migration"]):
         score += 25
-        reasons.append("Tech/Install Signal (+25)")
-        
-    # 2. Decision Maker Authority (+20)
-    decision_makers = ['cto', 'ceo', 'vp', 'head', 'director', 'founder', 'ciso']
-    if any(dm in role for dm in decision_makers):
+        reasons.append("tech-change")
+    if any(dm in role for dm in ["cto", "ceo", "vp", "head", "director", "founder", "ciso"]):
         score += 20
-        reasons.append("Decision Maker (+20)")
-        
-    # 3. ICP Fit (+15)
-    # Assumes target is mid-market to enterprise
-    if any(k in size for k in ['1000', '500', 'enterprise', 'mid-market']):
+        reasons.append("decision-maker")
+    if any(k in size for k in ["1000", "500", "enterprise", "mid-market"]):
         score += 15
-        reasons.append("ICP Company Size (+15)")
-        
-    # 4. Budget/Urgency (+10)
-    if 'budget' in insight or 'q4' in insight or 'immediate' in insight:
+        reasons.append("icp-fit")
+    if any(k in insight for k in ["budget", "q4", "immediate"]):
         score += 10
-        reasons.append("Budget/Urgency (+10)")
-        
+        reasons.append("urgency")
+
     return min(score, 100), reasons
-
-# -------------------------------------------------
-# 2. STRUCTURAL VALIDATION (STRICT)
-# -------------------------------------------------
-
-def validate_structure(email_text: str) -> bool:
-    if not email_text or not isinstance(email_text, str):
-        return False
-
-    text = email_text.strip().lower()
-
-    # 1. Check for fatal placeholders
-    forbidden = ["[your name]", "[your company]", "{name}", "{company}", "sincerely, [name]"]
-    for f in forbidden:
-        if f in text:
-            return False
-
-    # 2. Valid Ending Check
-    # Must end with the injected email OR a standard signoff
-    valid_endings = ("best,", "regards,", "sincerely,", "thanks,")
-    
-    has_valid_ending = False
-    if "@" in text.split()[-1]: # Ends with email address (Standard Injection)
-        has_valid_ending = True
-    elif any(text.endswith(s) for s in valid_endings): # Ends with text signoff
-        has_valid_ending = True
-        
-    if not has_valid_ending:
-        return False
-
-    # 3. Minimum Length (Optimized for 7B models)
-    if len(text.split()) < 30:
-        return False
-
-    return True
-
-# -------------------------------------------------
-# 3. GENERATION (CHAIN-OF-THOUGHT)
-# -------------------------------------------------
-
 
 
 def build_fallback_email_body(lead) -> str:
-    """Deterministic fallback when LLM is unavailable or times out."""
-    name = safe_str(getattr(lead, 'name', 'there'))
-    company = safe_str(getattr(lead, 'company', 'your team'))
-    industry = safe_str(getattr(lead, 'industry', 'your industry'))
-    insight = safe_str(getattr(lead, 'verified_insight', 'recent operational changes'))
+    name = safe_str(getattr(lead, "name", "there"))
+    company = safe_str(getattr(lead, "company", "your team"))
+    industry = safe_str(getattr(lead, "industry", "your industry"))
+    insight = safe_str(getattr(lead, "verified_insight", "recent operational changes"))
 
     return (
         f"Hi {name}, I noticed {company} is seeing {insight} in {industry}. "
-        f"We help teams shorten rollout time and improve pipeline visibility without adding overhead. "
-        f"Would you be open to a quick 15-minute call next week to compare approaches?"
+        "We help teams shorten rollout time and improve revenue visibility without adding process overhead. "
+        "Would you be open to a quick 15-minute call next week to compare approaches?"
     )
 
-def generate_email_body(lead):
-    name = safe_str(getattr(lead, 'name', 'Prospect'))
-    company = safe_str(getattr(lead, 'company', 'your company'))
-    industry = safe_str(getattr(lead, 'industry', 'your industry'))
-    insight = safe_str(getattr(lead, 'verified_insight', f'recent trends in {industry}'))
 
-    prompt = f"""
-You are an expert SDR Agent. 
+def _generation_prompt(lead) -> str:
+    name = safe_str(getattr(lead, "name", "Prospect"))
+    company = safe_str(getattr(lead, "company", "your company"))
+    industry = safe_str(getattr(lead, "industry", "your industry"))
+    insight = safe_str(getattr(lead, "verified_insight", f"recent trends in {industry}"))
+    return f"""
+You are an expert SDR Agent.
+Prompt Version: {PROMPT_VERSION}
 Context:
 - Prospect: {name} ({company})
 - Industry: {industry}
 - Insight: {insight}
-- My Role: {SDR_ROLE} at {SDR_COMPANY} (B2B SaaS)
+- My Role: {SDR_ROLE} at {SDR_COMPANY}
 
-Task: Write a cold email (NO signature).
-Goal: 85+/100 score. Must be specific, not generic.
-
-Instructions:
-1. Analyze the insight and how our product helps.
-2. Draft a concise email (45-75 words).
-3. Output JSON ONLY.
-
-Format:
+Task: Write a cold email body (NO signature), 45-90 words, concrete and specific.
+Output JSON only:
 {{
-  "thought_process": "Briefly explain why this angle works...",
-  "email_body": "The actual email text here..."
+  "thought_process": "Why this angle fits this lead",
+  "email_body": "Email body only"
 }}
 """
-    # Requires updated llm_client.py with json_mode support
-    response_text = call_llm(prompt, json_mode=True).strip()
 
+
+def generate_email_body(lead) -> str:
+    prompt = _generation_prompt(lead)
+    response_text = call_llm(prompt, json_mode=True).strip()
     if not response_text:
-        print("⚠️ Using deterministic fallback email body due to LLM timeout/unavailability.")
         return build_fallback_email_body(lead)
 
     try:
-        data = json.loads(response_text)
-        email_body = safe_str(data.get("email_body", ""))
-        return email_body or build_fallback_email_body(lead)
-    except json.JSONDecodeError:
-        return response_text
+        parsed = parse_schema(SDREmailGeneration, response_text)
+        return safe_str(parsed.email_body) or build_fallback_email_body(lead)
+    except ValueError:
+        repair_prompt = (
+            "Return valid JSON matching keys thought_process and email_body only. "
+            f"Original output:\n{response_text}"
+        )
+        repaired = call_llm(repair_prompt, json_mode=True).strip()
+        try:
+            parsed = parse_schema(SDREmailGeneration, repaired)
+            return safe_str(parsed.email_body) or build_fallback_email_body(lead)
+        except ValueError:
+            # Final fallback: attempt plain json parse, otherwise deterministic.
+            try:
+                data = json.loads(response_text)
+                return safe_str(data.get("email_body", "")) or build_fallback_email_body(lead)
+            except json.JSONDecodeError:
+                return build_fallback_email_body(lead)
+
 
 def inject_signature(body: str) -> str:
-    # Cleanup potential double signatures from LLM
-    clean_body = body.replace("[Signature]", "").replace("Best regards,", "").strip()
-    return f"""{clean_body}
+    clean_body = sanitize_text(body).replace("[Signature]", "").strip()
+    return (
+        f"{clean_body}\n\n"
+        f"Best regards,\n"
+        f"{SDR_NAME}\n"
+        f"{SDR_ROLE}, {SDR_COMPANY}\n"
+        f"{SDR_EMAIL}"
+    )
 
-Best regards,
-{SDR_NAME}
-{SDR_ROLE}, {SDR_COMPANY}
-{SDR_EMAIL}"""
 
-# -------------------------------------------------
-# 4. EVALUATION
-# -------------------------------------------------
-
-def evaluate_email(email_text: str) -> int:
+def evaluate_email(email_text: str, lead) -> int:
+    deterministic_score = deterministic_email_quality_score(
+        email_text=email_text,
+        company=safe_str(getattr(lead, "company", "")),
+        industry=safe_str(getattr(lead, "industry", "")),
+    )
     prompt = f"""
-You are a Senior Sales Manager. Review this email draft.
-
-Email:
-"{email_text}"
-
-Rubric:
-- 90-100: Highly personalized, mentions specific company/industry details, distinct value prop.
-- 75-89: Good structure, but slightly generic value.
-- 0-74: Robot-like, placeholders, or irrelevant.
-
-Task:
-1. Critique the email.
-2. Assign a score (0-100).
-
-Output JSON:
+You are a Senior Sales Manager. Review this email draft and score 0-100.
+Output JSON only:
 {{
-  "critique": "...",
+  "critique": "short critique",
   "score": 85
 }}
+
+Email:
+{email_text}
 """
-    response = call_llm(prompt, json_mode=True)
+    llm_score = 0
+    response = call_llm(prompt, json_mode=True).strip()
+    if response:
+        try:
+            parsed = parse_schema(SDREmailEvaluation, response)
+            llm_score = int(parsed.score)
+        except ValueError:
+            llm_score = 0
 
-    try:
-        data = json.loads(response)
-        score = int(data.get("score", 0))
-        print(f"🧐 Evaluator Critique: {data.get('critique', 'No critique')}")
-        return max(0, min(score, 100))
-    except:
-        return 0
+    # Weighted blend to reduce single-model self-evaluation bias.
+    final_score = int(round((deterministic_score * 0.6) + (llm_score * 0.4)))
+    return max(0, min(final_score, 100))
 
-# -------------------------------------------------
-# 5. MAIN EXECUTION LOOP
-# -------------------------------------------------
 
-def run_sdr_agent():
-    # Updated: Use fetch_leads_by_status("New") instead of fetch_new_leads
-    leads = fetch_leads_by_status("New")
-
+def run_sdr_agent() -> None:
+    leads = fetch_leads_by_status(LeadStatus.NEW.value)
     if not leads:
-        print("No new leads found.")
+        logger.info("sdr.no_new_leads", extra={"event": "sdr.no_new_leads"})
         return
 
-    # Iterating over list of objects, not DataFrame rows
+    logger.info("sdr.start", extra={"event": "sdr.start", "lead_count": len(leads)})
+
     for lead in leads:
         lead_id = lead.id
-        name = safe_str(getattr(lead, 'name', 'Prospect'))
-        
-        print(f"\n🔍 Analyzing Lead: {name}...")
+        logger.info("sdr.lead.start", extra={"event": "sdr.lead.start", "lead_id": lead_id})
 
-        # ----------------------------------------
-        # GATE 1: Negative Signal Check
-        # ----------------------------------------
-        is_blocked, block_reason = check_negative_gate(lead)
-        if is_blocked:
-            print(f"⛔ BLOCKED: {block_reason}")
-            update_lead_status(lead_id, f"Skipped: {block_reason}")
-            mark_review_decision(lead_id, "BLOCKED")
+        blocked, reason = check_negative_gate(lead)
+        if blocked:
+            update_lead_status(lead_id, LeadStatus.DISQUALIFIED.value)
+            mark_review_decision(lead_id, ReviewStatus.BLOCKED.value, actor="system")
+            logger.info(
+                "sdr.lead.blocked",
+                extra={"event": "sdr.lead.blocked", "lead_id": lead_id, "reason": reason},
+            )
             continue
 
-        # ----------------------------------------
-        # GATE 2: Signal Strength Score
-        # ----------------------------------------
         signal_score, reasons = calculate_signal_score(lead)
         update_lead_signal_score(lead_id, signal_score)
-        print(f"📊 Signal Score: {signal_score}/100")
-        if reasons:
-            print(f"   Matches: {', '.join(reasons)}")
+        logger.info(
+            "sdr.signal_score",
+            extra={"event": "sdr.signal_score", "lead_id": lead_id, "score": signal_score, "reasons": ",".join(reasons)},
+        )
 
         if signal_score < SIGNAL_THRESHOLD:
-            print(f"📉 Low Signal (<{SIGNAL_THRESHOLD}) - Skipping Generation")
-            update_lead_status(lead_id, f"Skipped: Low Signal ({signal_score})")
-            mark_review_decision(lead_id, "SKIPPED")
+            update_lead_status(lead_id, LeadStatus.DISQUALIFIED.value)
+            mark_review_decision(lead_id, ReviewStatus.SKIPPED.value, actor="system")
+            logger.info(
+                "sdr.lead.skipped_low_signal",
+                extra={"event": "sdr.lead.skipped_low_signal", "lead_id": lead_id, "score": signal_score},
+            )
             continue
 
-        # ----------------------------------------
-        # GENERATION (Costly Step)
-        # ----------------------------------------
-        print("✅ Gates Passed. Generating Email...")
-        
         body = generate_email_body(lead)
-        if not body:
-            print("❌ Generation failed (empty body).")
-            continue
-            
         final_email = inject_signature(body)
 
-        # ----------------------------------------
-        # VALIDATION & SCORING
-        # ----------------------------------------
         if not validate_structure(final_email):
-            print("❌ Structural validation failed.")
-            save_draft(lead_id, final_email, 0, "STRUCTURAL_FAILED")
+            save_draft(lead_id, final_email, 0, ReviewStatus.STRUCTURAL_FAILED.value)
+            logger.warning(
+                "sdr.lead.structural_failed",
+                extra={"event": "sdr.lead.structural_failed", "lead_id": lead_id},
+            )
             continue
 
-        score = evaluate_email(final_email)
-        print(f"📝 Final Score: {score}")
+        score = evaluate_email(final_email, lead)
+        # Human approval gate is preserved: drafts remain pending for explicit review.
+        save_draft(lead_id, final_email, score, ReviewStatus.PENDING.value)
+        logger.info(
+            "sdr.lead.draft_saved",
+            extra={"event": "sdr.lead.draft_saved", "lead_id": lead_id, "score": score, "approval_threshold": APPROVAL_THRESHOLD},
+        )
 
-        status = "Approved" if score >= APPROVAL_THRESHOLD else "Pending"
-        save_draft(lead_id, final_email, score, status)
+    logger.info("sdr.complete", extra={"event": "sdr.complete"})
 
-        if status == "Approved":
-            print("🚀 Auto-Approved!")
-            update_lead_status(lead_id, "Contacted")
-        else:
-            print("⚠️ Sent for Human Review.")
 
 if __name__ == "__main__":
     run_sdr_agent()

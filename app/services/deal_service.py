@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.enums import DealStage
 from app.database.models import Deal
 from app.services.base_service import BaseService
 
@@ -10,7 +11,7 @@ class DealService(BaseService):
             lead_id=lead_id,
             acv=acv,
             qualification_score=qualification_score,
-            stage="Qualification",
+            stage=DealStage.QUALIFIED.value,
             created_at=datetime.utcnow()
         )
         self.db.add(deal)

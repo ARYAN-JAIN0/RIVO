@@ -1,256 +1,153 @@
-# Negotiation Agent
+"""Negotiation agent: handles objections for approved proposals."""
 
-"""
-Negotiation Agent - Handles objections and progresses contracts
-
-PHASE-3 EXTENSION: Runs after Sales Agent.
-Trigger: Deal status = "Proposal Sent"
-Output: Contract with objection handling strategies
-
-BACKWARD COMPATIBILITY:
-- Reads from deals table (stage="Proposal Sent")
-- Writes ONLY to contracts table
-- Same pattern: analysis → generation → scoring → approval/review
-"""
+from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
-from datetime import datetime
 
-# Set PROJECT_ROOT directly (avoid circular imports from app.main)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.core.enums import DealStage, ReviewStatus
 from app.database.db_handler import (
-    fetch_deals_by_status,
     create_contract,
+    fetch_deals_by_status,
     update_contract_negotiation,
-    fetch_pending_contract_reviews
 )
 from app.services.llm_client import call_llm
-from config.sdr_profile import SDR_NAME, SDR_COMPANY
+from utils.validators import sanitize_text
 
+logger = logging.getLogger(__name__)
 
-# Configuration
 NEGOTIATION_APPROVAL_THRESHOLD = 85
 
-
-# Common objection patterns and response frameworks
 OBJECTION_PLAYBOOK = {
     "price": {
         "pattern": ["expensive", "cost", "price", "budget", "afford"],
-        "framework": "ROI Justification: Calculate cost savings or revenue uplift"
+        "framework": "ROI justification with measurable business impact",
     },
     "timeline": {
         "pattern": ["time", "busy", "later", "next quarter", "delay"],
-        "framework": "Cost of Inaction: Quantify current pain points"
+        "framework": "Cost-of-inaction framing with phased rollout",
     },
     "competitor": {
         "pattern": ["competitor", "already using", "signed with", "existing solution"],
-        "framework": "Differentiation: Unique capabilities not available elsewhere"
+        "framework": "Differentiation on outcome, not feature parity",
     },
     "authority": {
         "pattern": ["need approval", "talk to team", "not decision maker"],
-        "framework": "Champion Building: Equip them to sell internally"
+        "framework": "Champion enablement with internal business case",
     },
     "trust": {
         "pattern": ["proven", "case study", "references", "risk"],
-        "framework": "Social Proof: Share similar customer success stories"
-    }
+        "framework": "Risk mitigation via references and pilot scope",
+    },
 }
 
 
-def classify_objections(objection_text: str) -> list:
-    """
-    Classify objections into standard categories.
-    Returns list of (category, framework) tuples.
-    """
-    objection_lower = objection_text.lower()
-    identified = []
-    
+def classify_objections(objection_text: str) -> list[tuple[str, str]]:
+    text = sanitize_text(objection_text).lower()
+    identified: list[tuple[str, str]] = []
     for category, data in OBJECTION_PLAYBOOK.items():
-        if any(pattern in objection_lower for pattern in data["pattern"]):
+        if any(pattern in text for pattern in data["pattern"]):
             identified.append((category, data["framework"]))
-    
-    return identified if identified else [("general", "Discovery: Ask probing questions to understand root cause")]
+    return identified or [("general", "Clarify root concern via discovery questions")]
 
 
 def generate_objection_response(deal, objections: str) -> tuple[str, int]:
-    """
-    Generate LLM-powered objection handling strategy.
-    Returns (proposed_solutions, confidence_score)
-    """
-    # Classify objections
     classified = classify_objections(objections)
     frameworks = [f"{cat}: {fw}" for cat, fw in classified]
-    
-    company = str(getattr(deal, 'company', 'Company'))
-    # Deal model doesn't have 'industry' directly, it is on Lead.
-    # Assuming we can access deal.lead.industry if lazy loading works or joined.
-    # For safety, default to unknown or try to access.
-    try:
-        industry = str(deal.lead.industry) if deal.lead else 'Industry'
-    except:
-        industry = 'Industry'
-        
-    deal_value = getattr(deal, 'acv', 50000)
-    
-    prompt = f"""
-You are a Senior Sales Negotiator handling objections.
+    company = sanitize_text(str(getattr(deal, "company", "Company")))
+    deal_value = int(getattr(deal, "acv", 50_000) or 50_000)
 
+    prompt = f"""
+You are a Senior Sales Negotiator.
 Context:
 - Company: {company}
-- Industry: {industry}
 - Deal Value: ${deal_value:,}
-- Objections: {objections}
-
-Identified Patterns: {', '.join(frameworks)}
-
-Task: Create a response strategy that addresses each objection using the appropriate framework.
-
-Requirements:
-1. Acknowledge the concern genuinely
-2. Provide data-driven response
-3. Offer concrete next steps
-4. Maintain collaborative tone
+- Objections: {sanitize_text(objections)}
+- Frameworks: {", ".join(frameworks)}
 
 Output JSON only:
 {{
-  "strategy": "Your multi-point response strategy...",
+  "strategy": "Multi-step objection handling strategy",
   "confidence": 85
 }}
-
-Confidence Score (0-100):
-- 90-100: Objection is superficial, easy to overcome
-- 75-89: Standard objection with known responses
-- 60-74: Complex objection requiring custom approach
-- Below 60: Fundamental mismatch, likely to stall
 """
-    
-    try:
-        response = call_llm(prompt, json_mode=True)
-        data = json.loads(response)
-        
-        strategy = data.get('strategy', '')
-        confidence = int(data.get('confidence', 0))
-        
-        # Add framework references
-        full_response = f"""
-OBJECTION HANDLING STRATEGY
+    response = call_llm(prompt, json_mode=True)
+    if response:
+        try:
+            data = json.loads(response)
+            strategy = sanitize_text(data.get("strategy", ""))
+            confidence = int(data.get("confidence", 0))
+            if strategy:
+                return strategy, max(0, min(confidence, 100))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
 
-{strategy}
-
-FRAMEWORKS APPLIED:
-{chr(10).join(f"- {cat.title()}: {fw}" for cat, fw in classified)}
-
-RECOMMENDED NEXT STEPS:
-1. Schedule follow-up call to address concerns in detail
-2. Provide relevant case studies from similar {industry} companies
-3. Offer proof-of-concept or pilot program
-"""
-        
-        return full_response.strip(), min(max(confidence, 0), 100)
-    
-    except (json.JSONDecodeError, Exception) as e:
-        print(f"⚠️  LLM failed, using deterministic response: {e}")
-        
-        # Deterministic fallback
-        fallback = f"""
-OBJECTION HANDLING STRATEGY
-
-Based on the objections raised, I recommend the following approach:
-
-{chr(10).join(f"{i+1}. Address {cat} concern: {fw}" for i, (cat, fw) in enumerate(classified))}
-
-NEXT STEPS:
-1. Schedule discovery call to understand priorities
-2. Share relevant case studies
-3. Propose pilot program to reduce risk
-"""
-        return fallback.strip(), 60  # Medium confidence for fallback
+    fallback = (
+        "Use structured objection handling:\n"
+        + "\n".join(
+            f"{idx + 1}. Address {category}: {framework}"
+            for idx, (category, framework) in enumerate(classified)
+        )
+    )
+    return fallback, 60
 
 
-def run_negotiation_agent():
-    """
-    Main Negotiation Agent execution loop.
-    
-    Process:
-    1. Fetch deals with stage="Proposal Sent"
-    2. Simulate objection gathering (in production: from CRM/email)
-    3. Generate objection handling strategy
-    4. Calculate confidence score
-    5. Auto-approve (≥85) or send for human review
-    6. Create/update contract in contracts table
-    """
-    # Fetch deals that need negotiation
-    proposal_sent = fetch_deals_by_status("Proposal Sent")
-    
-    if not proposal_sent:
-        print("No deals in proposal stage.")
+def run_negotiation_agent() -> None:
+    deals = fetch_deals_by_status(DealStage.PROPOSAL_SENT.value)
+    if not deals:
+        logger.info("negotiation.no_proposal_stage_deals", extra={"event": "negotiation.no_proposal_stage_deals"})
         return
-    
-    print(f"\n{'='*60}")
-    print(f"🤝 NEGOTIATION AGENT: Processing {len(proposal_sent)} deals")
-    print(f"{'='*60}\n")
-    
-    for deal in proposal_sent:
+
+    logger.info("negotiation.start", extra={"event": "negotiation.start", "deal_count": len(deals)})
+    for deal in deals:
         deal_id = deal.id
         lead_id = deal.lead_id
-        
-        print(f"\n🔍 Analyzing Deal #{deal_id}")
-        
-        # In production, objections would come from:
-        # - Email parsing
-        # - Sales rep notes
-        # - Meeting transcripts
-        # For now, simulate based on deal characteristics
-        
-        # Simulate objections based on deal value
-        deal_value = getattr(deal, 'acv', 0)
-        if deal_value > 75000:
-            simulated_objections = "Price is higher than expected. Need to justify ROI to CFO. Also concerned about implementation timeline."
-        elif deal_value > 40000:
-            simulated_objections = "Budget is tight this quarter. Can we push to next quarter? Also evaluating 2 other vendors."
+        deal_value = int(getattr(deal, "acv", 0) or 0)
+
+        if deal_value > 75_000:
+            objections = (
+                "Price is higher than expected. Need to justify ROI to CFO. "
+                "Concerned about implementation timeline."
+            )
+        elif deal_value > 40_000:
+            objections = "Budget is tight this quarter and two competitors are under evaluation."
         else:
-            simulated_objections = "Looks interesting but need to get team buy-in first. What's your implementation process?"
-        
-        print(f"📋 Objections: {simulated_objections[:80]}...")
-        
-        # Generate objection handling strategy
-        print("💡 Generating response strategy...")
-        proposed_solutions, confidence = generate_objection_response(deal, simulated_objections)
-        
-        print(f"📊 Confidence Score: {confidence}/100")
-        
-        # Create or update contract
-        try:
-            contract_id = create_contract(
-                deal_id=deal_id,
-                lead_id=lead_id,
-                contract_terms=f"Standard SaaS Agreement - ${deal_value:,} ACV",
-                contract_value=deal_value
-            )
-            
-            update_contract_negotiation(
-                contract_id=contract_id,
-                objections=simulated_objections,
-                proposed_solutions=proposed_solutions,
-                confidence_score=confidence
-            )
-            
-            if confidence >= NEGOTIATION_APPROVAL_THRESHOLD:
-                print(f"✅ Auto-Approved (Confidence: {confidence})")
-                print("   Strategy can be sent directly to prospect")
-            else:
-                print(f"⚠️  Pending Review (Confidence: {confidence} < {NEGOTIATION_APPROVAL_THRESHOLD})")
-                print("   Requires senior sales review before sending")
-            
-            print(f"💾 Contract #{contract_id} created/updated")
-            
-        except Exception as e:
-            print(f"❌ Error processing deal #{deal_id}: {e}")
+            objections = "Need wider team buy-in and implementation clarity."
+
+        strategy, confidence = generate_objection_response(deal, objections)
+        contract_id = create_contract(
+            deal_id=deal_id,
+            lead_id=lead_id,
+            contract_terms=f"Standard SaaS agreement - ${deal_value:,} ACV",
+            contract_value=deal_value,
+        )
+        update_contract_negotiation(
+            contract_id=contract_id,
+            objections=objections,
+            proposed_solutions=strategy,
+            confidence_score=confidence,
+        )
+
+        logger.info(
+            "negotiation.contract.updated_pending_review",
+            extra={
+                "event": "negotiation.contract.updated_pending_review",
+                "deal_id": deal_id,
+                "contract_id": contract_id,
+                "confidence": confidence,
+                "threshold": NEGOTIATION_APPROVAL_THRESHOLD,
+                "review_status": ReviewStatus.PENDING.value,
+            },
+        )
+
+    logger.info("negotiation.complete", extra={"event": "negotiation.complete"})
 
 
 if __name__ == "__main__":
     run_negotiation_agent()
+

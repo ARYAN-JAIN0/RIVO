@@ -9,6 +9,11 @@ nul
 
 # Local environment / secrets
 .env
+.env.*
+!.env.example
 
 # Local backup artifacts
 backups/
+
+# Logs
+*.log

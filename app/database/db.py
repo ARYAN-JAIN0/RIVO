@@ -1,43 +1,51 @@
-"""Database connection and session management - FIXED VERSION
+"""Database connection and session management."""
 
-CRITICAL FIX: SQLAlchemy echo is now conditional on DEBUG setting.
-In production (DEBUG=False), SQL logging is disabled for better performance.
-"""
+from __future__ import annotations
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+import logging
+from contextlib import contextmanager
+from collections.abc import Generator
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+
 from app.core.config import get_config
+
+logger = logging.getLogger(__name__)
 
 config = get_config()
 DATABASE_URL = config.DATABASE_URL
 
-# FIXED: Make echo conditional on DEBUG setting
-# echo=True logs all SQL statements (useful for development, bad for production)
 engine = create_engine(
-    DATABASE_URL, 
-    echo=config.DEBUG,  # Only log SQL in debug mode
-    pool_pre_ping=True,  # Verify connections before using
-    pool_recycle=3600    # Recycle connections after 1 hour
+    DATABASE_URL,
+    echo=config.DEBUG,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    pool_size=10,
+    max_overflow=20,
 )
 
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=engine
+    bind=engine,
 )
 
 Base = declarative_base()
 
 
-def get_db():
-    """
-    Dependency function for getting database sessions.
-    Use with FastAPI dependency injection or context managers.
-    
-    Example:
-        with get_db_session() as db:
-            leads = db.query(Lead).all()
-    """
+def get_db() -> Generator[Session, None, None]:
+    """Yield a session for dependency injection contexts."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@contextmanager
+def get_db_session() -> Generator[Session, None, None]:
+    """Context-manager wrapper for safe DB session lifecycle."""
     db = SessionLocal()
     try:
         yield db
@@ -46,16 +54,12 @@ def get_db():
 
 
 def verify_database_connection() -> bool:
-    """
-    Verify database connectivity at application startup.
-    
-    Returns:
-        True if connection successful, False otherwise
-    """
+    """Verify DB connectivity during startup."""
     try:
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         return True
-    except Exception as e:
-        print(f"❌ Database connection failed: {e}")
+    except Exception as exc:  # pragma: no cover - exercised in deployment.
+        logger.exception("database.connection_failed", extra={"event": "database.connection_failed"})
+        logger.error("database.connection_failed.details: %s", exc)
         return False

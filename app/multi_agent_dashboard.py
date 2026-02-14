@@ -32,37 +32,12 @@ from app.database.db_handler import (
     fetch_pending_dunning_reviews,
     mark_dunning_decision
 )
+from app.core.logging_config import configure_logging
 
-import pandas as pd
+from utils.validators import sanitize_text
+from utils.orm import orm_to_df
 
-def orm_to_df(objects, id_column_name=None):
-    """
-    Convert ORM objects to DataFrame with proper key handling.
-    
-    CRITICAL FIX: Renames 'id' column to match UI expectations (deal_id, contract_id, etc.)
-    This prevents KeyError when accessing DataFrame rows in the UI.
-    
-    Args:
-        objects: List of ORM model instances
-        id_column_name: Optional name to rename 'id' column to (e.g., 'deal_id')
-    
-    Returns:
-        DataFrame with properly named columns
-    """
-    if not objects:
-        return pd.DataFrame()
-    
-    # Extract dict from ORM objects, excluding SQLAlchemy internal attributes
-    df = pd.DataFrame([
-        {k: v for k, v in obj.__dict__.items() if not k.startswith('_')}
-        for obj in objects
-    ])
-    
-    # Rename 'id' column if requested
-    if id_column_name and 'id' in df.columns:
-        df = df.rename(columns={'id': id_column_name})
-    
-    return df
+configure_logging()
 
 
 # Page config
@@ -120,8 +95,9 @@ with tab1:
                     
                     with col1:
                         # Safe field access
-                        name = row.get('name', 'Unknown')
-                        company = row.get('company', 'Unknown')
+                        row_id = int(row.get("id", 0) or 0)
+                        name = sanitize_text(row.get('name', 'Unknown'), max_len=300)
+                        company = sanitize_text(row.get('company', 'Unknown'), max_len=300)
                         st.subheader(f"Lead: {name} ({company})")
                     
                     with col2:
@@ -147,26 +123,26 @@ with tab1:
                         st.metric("Score", f"{score_val}/100")
                     
                     # Email editor
-                    draft = row.get("draft_message", "") or ""
+                    draft = sanitize_text(row.get("draft_message", "") or "", max_len=12000)
                     edited_email = st.text_area(
                         "Email Draft",
                         value=draft,
                         height=250,
-                        key=f"sdr_email_{row['id']}"
+                        key=f"sdr_email_{row_id}"
                     )
                     
                     # Action buttons
                     btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 4])
                     
                     with btn_col1:
-                        if st.button("✅ Approve & Send", key=f"sdr_approve_{row['id']}"):
-                            mark_review_decision(row["id"], "Approved", edited_email)
+                        if st.button("✅ Approve & Send", key=f"sdr_approve_{row_id}"):
+                            mark_review_decision(row_id, "Approved", edited_email)
                             st.success("Approved!")
                             st.rerun()
                     
                     with btn_col2:
-                        if st.button("❌ Reject", key=f"sdr_reject_{row['id']}"):
-                            mark_review_decision(row["id"], "Rejected", edited_email)
+                        if st.button("❌ Reject", key=f"sdr_reject_{row_id}"):
+                            mark_review_decision(row_id, "Rejected", edited_email)
                             st.warning("Rejected")
                             st.rerun()
                     

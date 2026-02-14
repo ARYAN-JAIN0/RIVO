@@ -1,205 +1,134 @@
-"""
-Central Orchestrator for Revo Multi-Agent System
+"""Central orchestrator for the multi-agent RIVO workflow."""
 
-CRITICAL: This orchestrator EXTENDS Phase-2 without modifying existing SDR logic.
-It coordinates event-driven workflows across SDR → Sales → Negotiation → Finance agents.
+from __future__ import annotations
 
-BACKWARD COMPATIBILITY GUARANTEES:
-- SDR Agent runs independently (existing behavior preserved)
-- New agents trigger ONLY on state transitions from SDR completions
-- Existing leads.csv schema unchanged
-- All new data stored in separate CSV files
-"""
-
+import json
+import logging
 import sys
-import os
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
 from typing import Dict, List
 
-# Fix UTF-8 encoding for Windows console (emoji support)
-if sys.platform == "win32":
-    os.environ["PYTHONIOENCODING"] = "utf-8"
-    sys.stdout.reconfigure(encoding="utf-8")
-
-# Ensure project root is importable - FIXED FOR WINDOWS
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.agents.sdr_agent import run_sdr_agent
-from app.agents.sales_agent import run_sales_agent
-from app.agents.negotiation_agent import run_negotiation_agent
 from app.agents.finance_agent import run_finance_agent
-from app.database.db_handler import fetch_leads_by_status
-from memory.vector_store import initialize_vector_store
+from app.agents.negotiation_agent import run_negotiation_agent
+from app.agents.sales_agent import run_sales_agent
+from app.agents.sdr_agent import run_sdr_agent
+from app.core.enums import ContractStatus, DealStage, InvoiceStatus, LeadStatus
+from app.core.startup import bootstrap
+from app.database.db_handler import (
+    fetch_contracts_by_status,
+    fetch_deals_by_status,
+    fetch_invoices_by_status,
+    fetch_leads_by_status,
+    fetch_pending_reviews,
+)
 from memory.graph_store import initialize_graph_store
+from memory.vector_store import initialize_vector_store
+
+logger = logging.getLogger(__name__)
 
 
 class RevoOrchestrator:
-    """
-    Event-driven orchestrator for multi-agent workflows.
-    
-    State Machine:
-    1. SDR: New → Contacted (email approved)
-    2. Sales: Contacted → Qualified → Proposal Sent → Deal Won
-    3. Negotiation: Proposal Sent → Negotiating → Contract Signed
-    4. Finance: Contract Signed → Invoice Sent → Paid / Overdue
-    """
-    
-    def __init__(self):
+    """Event-driven orchestrator for SDR -> Sales -> Negotiation -> Finance."""
+
+    def __init__(self) -> None:
         self.agents = {
-            'sdr': run_sdr_agent,
-            'sales': run_sales_agent,
-            'negotiation': run_negotiation_agent,
-            'finance': run_finance_agent
+            "sdr": run_sdr_agent,
+            "sales": run_sales_agent,
+            "negotiation": run_negotiation_agent,
+            "finance": run_finance_agent,
         }
-        
-        # Initialize memory layers (non-destructive)
         self.vector_store = initialize_vector_store()
         self.graph_store = initialize_graph_store()
-        
-        print("🧠 Revo Orchestrator Initialized")
-        print(f"   Agents: {list(self.agents.keys())}")
-        print(f"   Memory: Vector Store + Graph Store")
-    
-    def run_pipeline(self, agents_to_run: List[str] = None):
-        """
-        Execute agent pipeline in sequence.
-        
-        Args:
-            agents_to_run: List of agent names, or None to run all
-        
-        SAFETY: Each agent is independent. If one fails, others continue.
-        """
-        if agents_to_run is None:
-            agents_to_run = ['sdr', 'sales', 'negotiation', 'finance']
-        
-        print(f"\n{'='*60}")
-        print(f"🚀 Starting Revo Pipeline: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*60}\n")
-        
-        results = {}
-        
-        for agent_name in agents_to_run:
-            if agent_name not in self.agents:
-                print(f"⚠️  Unknown agent: {agent_name}")
+        logger.info(
+            "orchestrator.initialized",
+            extra={
+                "event": "orchestrator.initialized",
+                "agents": ",".join(self.agents.keys()),
+                "vector_store_enabled": bool(self.vector_store),
+                "graph_store_enabled": bool(self.graph_store),
+            },
+        )
+
+    def run_pipeline(self, agents_to_run: List[str] | None = None) -> Dict[str, str]:
+        agents = agents_to_run or ["sdr", "sales", "negotiation", "finance"]
+        results: Dict[str, str] = {}
+        logger.info("orchestrator.pipeline.start", extra={"event": "orchestrator.pipeline.start", "agents": ",".join(agents)})
+
+        for agent_name in agents:
+            agent_fn = self.agents.get(agent_name)
+            if not agent_fn:
+                results[agent_name] = "unknown_agent"
+                logger.warning("orchestrator.agent.unknown", extra={"event": "orchestrator.agent.unknown", "agent": agent_name})
                 continue
-            
+
             try:
-                print(f"\n{'─'*60}")
-                print(f"🤖 Running {agent_name.upper()} Agent...")
-                print(f"{'─'*60}")
-                
-                agent_fn = self.agents[agent_name]
+                logger.info("orchestrator.agent.start", extra={"event": "orchestrator.agent.start", "agent": agent_name})
                 agent_fn()
-                
-                results[agent_name] = "✅ Success"
-                print(f"\n✅ {agent_name.upper()} Agent completed")
-                
-            except Exception as e:
-                results[agent_name] = f"❌ Error: {str(e)}"
-                print(f"\n❌ {agent_name.upper()} Agent failed: {e}")
-                import traceback
-                traceback.print_exc()
-                # Continue to next agent (fault isolation)
-        
-        self._print_summary(results)
-        
+                results[agent_name] = "success"
+                logger.info("orchestrator.agent.success", extra={"event": "orchestrator.agent.success", "agent": agent_name})
+            except Exception as exc:
+                results[agent_name] = f"error: {exc}"
+                logger.exception(
+                    "orchestrator.agent.failure",
+                    extra={"event": "orchestrator.agent.failure", "agent": agent_name},
+                )
+
+        logger.info("orchestrator.pipeline.complete", extra={"event": "orchestrator.pipeline.complete", "results": json.dumps(results)})
         return results
-    
-    def run_single_agent(self, agent_name: str):
-        """Run a single agent on-demand."""
+
+    def run_single_agent(self, agent_name: str) -> Dict[str, str]:
         return self.run_pipeline(agents_to_run=[agent_name])
-    
+
     def get_system_health(self) -> Dict:
-        """
-        Return health metrics across all stages.
-        
-        BACKWARD COMPATIBLE: Only reads from CSVs, never writes.
-        """
         try:
-            # SDR Stage
-            new_leads = fetch_leads_by_status("New")
-            pending_reviews = fetch_leads_by_status("Pending")
-            contacted = fetch_leads_by_status("Contacted")
-            
-            # Sales Stage (from new CSV)
-            from app.database.db_handler import fetch_deals_by_status
-            qualified = fetch_deals_by_status("Qualified")
-            proposals = fetch_deals_by_status("Proposal Sent")
-            
-            # Negotiation Stage
-            from app.database.db_handler import fetch_contracts_by_status
-            negotiating = fetch_contracts_by_status("Negotiating")
-            
-            # Finance Stage
-            from app.database.db_handler import fetch_invoices_by_status
-            overdue = fetch_invoices_by_status("Overdue")
-            
+            new_leads = fetch_leads_by_status(LeadStatus.NEW.value)
+            pending_reviews = fetch_pending_reviews()
+            contacted = fetch_leads_by_status(LeadStatus.CONTACTED.value)
+            qualified = fetch_deals_by_status(DealStage.QUALIFIED.value)
+            proposals = fetch_deals_by_status(DealStage.PROPOSAL_SENT.value)
+            negotiating = fetch_contracts_by_status(ContractStatus.NEGOTIATING.value)
+            overdue = fetch_invoices_by_status(InvoiceStatus.OVERDUE.value)
+
             return {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "sdr": {
                     "new_leads": len(new_leads),
                     "pending_review": len(pending_reviews),
-                    "contacted": len(contacted)
+                    "contacted": len(contacted),
                 },
                 "sales": {
                     "qualified": len(qualified),
-                    "proposals_sent": len(proposals)
+                    "proposals_sent": len(proposals),
                 },
-                "negotiation": {
-                    "active_negotiations": len(negotiating)
-                },
-                "finance": {
-                    "overdue_invoices": len(overdue)
-                }
+                "negotiation": {"active_negotiations": len(negotiating)},
+                "finance": {"overdue_invoices": len(overdue)},
             }
-        except Exception as e:
-            return {"error": str(e)}
-    
-    def _print_summary(self, results: Dict):
-        """Print execution summary."""
-        print(f"\n{'='*60}")
-        print(f"📊 Pipeline Summary")
-        print(f"{'='*60}")
-        
-        for agent, status in results.items():
-            print(f"   {agent.upper()}: {status}")
-        
-        print(f"{'='*60}\n")
+        except Exception as exc:
+            logger.exception("orchestrator.health.failed", extra={"event": "orchestrator.health.failed"})
+            return {"error": str(exc)}
 
 
-def main():
-    """
-    Main entry point for orchestrator.
-    
-    USAGE:
-        python app/orchestrator.py              # Run all agents
-        python app/orchestrator.py sdr          # Run only SDR
-        python app/orchestrator.py sales        # Run only Sales
-        python app/orchestrator.py health       # Check system health
-    """
+def main() -> None:
+    bootstrap()
     orchestrator = RevoOrchestrator()
-    
+
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()
-        
         if command == "health":
-            health = orchestrator.get_system_health()
-            print("\n🏥 System Health:")
-            import json
-            print(json.dumps(health, indent=2))
-        
-        elif command in orchestrator.agents:
-            orchestrator.run_single_agent(command)
-        
-        else:
-            print(f"❌ Unknown command: {command}")
-            print(f"   Available: {list(orchestrator.agents.keys()) + ['health']}")
-    
-    else:
-        # Run full pipeline
-        orchestrator.run_pipeline()
+            print(json.dumps(orchestrator.get_system_health(), indent=2))
+            return
+        if command in orchestrator.agents:
+            print(json.dumps(orchestrator.run_single_agent(command), indent=2))
+            return
+
+        print(json.dumps({"error": f"unknown command '{command}'", "available": list(orchestrator.agents.keys()) + ["health"]}, indent=2))
+        return
+
+    print(json.dumps(orchestrator.run_pipeline(), indent=2))
 
 
 if __name__ == "__main__":

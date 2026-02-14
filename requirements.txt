@@ -6,6 +6,9 @@ sqlalchemy
 psycopg2-binary
 faker
 python-dotenv
+pydantic>=2.8,<3
+alembic>=1.13,<2
+pytest>=8,<9
 
 # Optional: Memory layer (graceful degradation if missing)
 # Uncomment to enable vector/graph stores:

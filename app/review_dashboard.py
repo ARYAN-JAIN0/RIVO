@@ -13,20 +13,15 @@ if project_root_str in sys.path:
 sys.path.insert(0, project_root_str)
 
 from app.database.db_handler import fetch_pending_reviews, mark_review_decision
+from app.core.logging_config import configure_logging
+from utils.validators import sanitize_text
+from utils.orm import orm_to_df
+
+configure_logging()
 
 st.set_page_config(page_title="Revo – Human Review Panel", layout="wide")
 
 st.title("🧠 Revo – Human-in-the-Loop Review")
-
-import pandas as pd
-
-def orm_to_df(objects):
-    if not objects:
-        return pd.DataFrame()
-    return pd.DataFrame([
-        {k: v for k, v in obj.__dict__.items() if not k.startswith('_')}
-        for obj in objects
-    ])
 
 # Fetch BOTH Pending + Structural Failed
 pending = orm_to_df(fetch_pending_reviews(include_structural_failed=True))
@@ -36,8 +31,12 @@ if pending.empty:
     st.stop()
 
 for _, row in pending.iterrows():
+    row_id = int(row.get("id", 0) or 0)
     st.markdown("---")
-    st.subheader(f"Lead: {row['name']} ({row['company']})")
+    st.subheader(
+        f"Lead: {sanitize_text(row.get('name', 'Unknown'), max_len=300)} "
+        f"({sanitize_text(row.get('company', 'Unknown'), max_len=300)})"
+    )
 
     # Status badge
     if row["review_status"] == "STRUCTURAL_FAILED":
@@ -49,19 +48,19 @@ for _, row in pending.iterrows():
 
     edited_email = st.text_area(
         "Draft Email",
-        value=row["draft_message"],
+        value=sanitize_text(row.get("draft_message", ""), max_len=12000),
         height=220,
-        key=f"email_{row['id']}"
+        key=f"email_{row_id}"
     )
 
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("✅ Approve", key=f"approve_{row['id']}"):
-            mark_review_decision(row["id"], "Approved", edited_email)
+        if st.button("✅ Approve", key=f"approve_{row_id}"):
+            mark_review_decision(row_id, "Approved", edited_email)
             st.success("Approved and sent!")
 
     with col2:
-        if st.button("❌ Reject", key=f"reject_{row['id']}"):
-            mark_review_decision(row["id"], "Rejected", edited_email)
+        if st.button("❌ Reject", key=f"reject_{row_id}"):
+            mark_review_decision(row_id, "Rejected", edited_email)
             st.warning("Rejected.")

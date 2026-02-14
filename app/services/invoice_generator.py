@@ -7,7 +7,7 @@ PHASE-3 EXTENSION: Generate PDF invoices from contract data.
 Integrates with Finance Agent for professional invoice creation.
 
 BACKWARD COMPATIBILITY:
-- Standalone service, doesn't modify CSVs
+- Standalone service, doesn't modify transactional tables directly
 - Optional dependency (agents work without it)
 """
 

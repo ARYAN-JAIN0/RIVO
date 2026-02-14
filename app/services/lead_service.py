@@ -1,6 +1,7 @@
 from app.database.models import Lead
 from app.services.base_service import BaseService
 from datetime import datetime
+from app.core.enums import LeadStatus
 
 class LeadService(BaseService):
 
@@ -18,7 +19,8 @@ class LeadService(BaseService):
         if not lead:
             return None
         lead.status = status
-        lead.last_contacted = datetime.utcnow()
+        if status == LeadStatus.CONTACTED.value:
+            lead.last_contacted = datetime.utcnow()
         self.commit()
         return lead
 

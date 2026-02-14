@@ -1,12 +1,78 @@
-# AFTER (CLARIFIED):
-# Docker Compose configuration
-# STATUS: PLACEHOLDER - NOT YET IMPLEMENTED
-#
-# Future implementation will define:
-# - PostgreSQL service (replacing CSV storage)
-# - Redis service (for caching/pub-sub)
-# - Ollama service (for LLM inference)
-# - Application service (FastAPI)
-#
-# For now, use direct Python execution:
-#   python app/orchestrator.py
+version: "3.8"
+
+services:
+  db:
+    image: postgres:14
+    container_name: rivo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rivo
+      POSTGRES_USER: ${POSTGRES_USER:-rivo_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rivo_app} -d rivo"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rivo-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rivo-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      ENV: production
+      DEBUG: "False"
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-rivo_app}:${POSTGRES_PASSWORD:-change_me}@db:5432/rivo
+      OLLAMA_URL: http://ollama:11434/api/generate
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: ["python", "app/orchestrator.py"]
+    volumes:
+      - ./memory:/app/memory
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rivo-dashboard
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENV: production
+      DEBUG: "False"
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-rivo_app}:${POSTGRES_PASSWORD:-change_me}@db:5432/rivo
+      OLLAMA_URL: http://ollama:11434/api/generate
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: ["streamlit", "run", "app/multi_agent_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./memory:/app/memory
+
+volumes:
+  postgres_data:
+  ollama_data:
+
