@@ -6,5 +6,8 @@ from app.services.lead_service import LeadService
 
 
 class LeadsService(LeadService):
-    """Pluralized service name used by the target backend layout."""
+    """Pluralized facade kept for target layout compatibility.
 
+    Existing callers can import `LeadService` or `LeadsService` interchangeably
+    during the migration window.
+    """

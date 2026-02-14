@@ -6,5 +6,8 @@ from app.services.deal_service import DealService
 
 
 class DealsService(DealService):
-    """Pluralized service name used by the target backend layout."""
+    """Pluralized facade kept for target layout compatibility.
 
+    Existing callers can import `DealService` or `DealsService` interchangeably
+    during the migration window.
+    """

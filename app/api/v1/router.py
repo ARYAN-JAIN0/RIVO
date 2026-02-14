@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Root API router for v1 endpoints."""
 
-from fastapi import APIRouter
+from app.api._compat import APIRouter
 
 from app.api.v1 import endpoints
 

@@ -9,13 +9,24 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import requests
-from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.enums import LeadStatus, ReviewStatus
 from app.database.db import get_db_session
 from app.database.models import Lead
 from utils.validators import sanitize_text
+
+try:  # pragma: no cover - exercised when bs4 is installed.
+    from bs4 import BeautifulSoup
+except ModuleNotFoundError:  # pragma: no cover - local fallback path.
+    class BeautifulSoup:  # type: ignore[override]
+        def __init__(self, html: str, parser: str) -> None:
+            self._html = html
+
+        def get_text(self, sep: str = " ", strip: bool = True) -> str:
+            text = re.sub(r"<[^>]+>", " ", self._html)
+            text = re.sub(r"\s+", " ", text)
+            return text.strip() if strip else text
 
 logger = logging.getLogger(__name__)
 

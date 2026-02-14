@@ -6,5 +6,8 @@ from app.services.invoice_service import InvoiceService
 
 
 class InvoicesService(InvoiceService):
-    """Pluralized service name used by the target backend layout."""
+    """Pluralized facade kept for target layout compatibility.
 
+    Existing callers can import `InvoiceService` or `InvoicesService`
+    interchangeably during the migration window.
+    """
