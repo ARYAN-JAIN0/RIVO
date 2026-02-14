@@ -7,9 +7,11 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -60,20 +62,36 @@ class Deal(Base):
     __table_args__ = (
         Index("idx_deals_stage", "stage"),
         Index("idx_deals_review_status", "review_status"),
+        Index("idx_deals_tenant_stage", "tenant_id", "stage"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False)
     company = Column(String)
     acv = Column(Integer)
     qualification_score = Column(Integer)
-    stage = Column(String, default="Qualified")
+    stage = Column(String, default="Lead")
+    status = Column(String, default="Open")
+    deal_value = Column(Integer)
+    probability = Column(Float, default=0.0)
+    expected_close_date = Column(Date)
+    margin = Column(Float)
+    cost_estimate = Column(Integer, default=0)
+    forecast_month = Column(String)
+    segment_tag = Column(String, default="SMB")
+    probability_breakdown = Column(JSON)
+    probability_explanation = Column(Text)
+    probability_confidence = Column(Integer)
+    proposal_path = Column(String)
+    proposal_version = Column(Integer, default=0)
     notes = Column(Text)
     review_status = Column(String, default="Pending")
     created_at = Column(DateTime, default=datetime.utcnow)
     last_updated = Column(DateTime, default=datetime.utcnow)
 
     lead = relationship("Lead", back_populates="deals")
+    tenant = relationship("Tenant")
 
 
 class Contract(Base):

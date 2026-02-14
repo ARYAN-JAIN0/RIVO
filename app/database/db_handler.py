@@ -158,12 +158,18 @@ def create_deal(
 ) -> int:
     with get_db_session() as session:
         try:
+            lead = session.query(Lead).filter(Lead.id == lead_id).first()
+            tenant_id = getattr(lead, "tenant_id", 1) if lead else 1
             new_deal = Deal(
+                tenant_id=tenant_id,
                 lead_id=lead_id,
                 company=sanitize_text(company, max_len=300),
                 acv=acv,
+                deal_value=acv,
                 qualification_score=qualification_score,
                 stage=stage,
+                status="Open",
+                probability=float(qualification_score or 0),
                 notes=sanitize_text(notes, max_len=10000),
                 created_at=datetime.utcnow(),
                 last_updated=datetime.utcnow(),
