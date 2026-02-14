@@ -66,7 +66,9 @@ def upgrade() -> None:
     lead_email_unique_index_names = {
         index.get("name")
         for index in unique_indexes
-        if index.get("unique") and tuple(index.get("column_names") or ()) == ("email",)
+        if index.get("unique")
+        and not index.get("duplicates_constraint")
+        and tuple(index.get("column_names") or ()) == ("email",)
     }
     for name in lead_email_unique_index_names:
         if name:
