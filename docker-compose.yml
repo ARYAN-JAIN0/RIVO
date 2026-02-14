@@ -1,6 +1,14 @@
 version: "3.8"
 
 services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: rivo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
   db:
     image: postgres:14
     container_name: rivo-db
@@ -46,9 +54,36 @@ services:
       OLLAMA_URL: http://ollama:11434/api/generate
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    command: ["python", "app/orchestrator.py"]
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
     volumes:
       - ./memory:/app/memory
+
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rivo-worker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      ENV: production
+      DEBUG: "False"
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-rivo_app}:${POSTGRES_PASSWORD:-change_me}@db:5432/rivo
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      OLLAMA_URL: http://ollama:11434/api/generate
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: ["celery", "-A", "app.tasks.agent_tasks", "worker", "--loglevel=INFO"]
 
   dashboard:
     build:
