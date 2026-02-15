@@ -29,6 +29,19 @@ python app/orchestrator.py health       # health JSON
 streamlit run app/multi_agent_dashboard.py
 ```
 
+If your local PostgreSQL credentials are not configured yet, you can either
+switch to SQLite in `.env`:
+
+```bash
+DATABASE_URL=sqlite:///./rivo.db
+```
+
+or keep your current URL and allow startup to continue while showing DB errors:
+
+```bash
+DB_CONNECTIVITY_REQUIRED=false
+```
+
 ## Human Review Gate
 
 - SDR drafts are stored as `review_status=Pending`; no auto-send.
@@ -73,4 +86,3 @@ Current test suite focuses on critical integrity behavior:
 - invoice deduplication
 - deterministic structure validation
 - orchestrator health pending-review counts
-

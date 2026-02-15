@@ -14,8 +14,14 @@ logger = logging.getLogger(__name__)
 def validate_startup_config() -> None:
     """Fail-fast config and connectivity checks."""
     config = get_config()
-    if not verify_database_connection():
+    database_ok = verify_database_connection()
+    if not database_ok and config.DB_CONNECTIVITY_REQUIRED:
         raise RuntimeError("Database connectivity check failed.")
+    if not database_ok:
+        logger.warning(
+            "startup.database.connectivity_optional_failed",
+            extra={"event": "startup.database.connectivity_optional_failed"},
+        )
 
     if config.is_production and config.DATABASE_URL.startswith("sqlite"):
         logger.warning(
@@ -29,6 +35,7 @@ def validate_startup_config() -> None:
             "event": "startup.config.validated",
             "env": config.ENV,
             "database_url_scheme": config.DATABASE_URL.split("://", 1)[0],
+            "db_connectivity_required": config.DB_CONNECTIVITY_REQUIRED,
         },
     )
 

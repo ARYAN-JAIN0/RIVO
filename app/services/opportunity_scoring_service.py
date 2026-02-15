@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 
 from app.services.llm_client import call_llm
-from utils.validators import sanitize_text
+from app.utils.validators import sanitize_text
 
 logger = logging.getLogger(__name__)
 
