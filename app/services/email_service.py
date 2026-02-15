@@ -12,7 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.database.db import get_db_session
 from app.database.models import EmailLog, Lead
-from utils.validators import sanitize_text
+from app.utils.validators import sanitize_text
 
 logger = logging.getLogger(__name__)
 

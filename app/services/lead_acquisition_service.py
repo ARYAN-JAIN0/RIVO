@@ -14,7 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.enums import LeadStatus, ReviewStatus
 from app.database.db import get_db_session
 from app.database.models import Lead
-from utils.validators import sanitize_text
+from app.utils.validators import sanitize_text
 
 try:  # pragma: no cover - exercised when bs4 is installed.
     from bs4 import BeautifulSoup

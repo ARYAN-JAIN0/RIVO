@@ -21,7 +21,7 @@ from app.database.db_handler import (
 )
 from app.services.llm_client import call_llm
 from config.sdr_profile import SDR_COMPANY, SDR_EMAIL, SDR_NAME
-from utils.validators import sanitize_text
+from app.utils.validators import sanitize_text
 
 logger = logging.getLogger(__name__)
 

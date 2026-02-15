@@ -24,7 +24,7 @@ from app.services.email_service import EmailService
 
 from app.services.llm_client import call_llm
 from config.sdr_profile import SDR_COMPANY, SDR_EMAIL, SDR_NAME, SDR_ROLE
-from utils.validators import deterministic_email_quality_score, sanitize_text, validate_structure
+from app.utils.validators import deterministic_email_quality_score, sanitize_text, validate_structure
 
 logger = logging.getLogger(__name__)
 
