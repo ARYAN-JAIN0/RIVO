@@ -17,7 +17,7 @@ from app.core.enums import (
 )
 from app.database.db import get_db_session
 from app.database.models import AgentRun, Contract, Deal, EmailLog, Invoice, LLMLog, Lead, PromptTemplate, ReviewAudit, Tenant
-from utils.validators import sanitize_text
+from app.utils.validators import sanitize_text
 
 logger = logging.getLogger(__name__)
 
