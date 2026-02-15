@@ -15,7 +15,7 @@ sys.path.insert(0, project_root_str)
 from app.database.db_handler import fetch_pending_reviews, mark_review_decision
 from app.core.logging_config import configure_logging
 from app.utils.validators import sanitize_text
-from app.utils.orm import orm_to_df
+from utils.orm import orm_to_df
 
 configure_logging()
 
