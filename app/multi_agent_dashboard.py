@@ -34,7 +34,7 @@ from app.database.db_handler import (
 )
 from app.core.logging_config import configure_logging
 
-from utils.validators import sanitize_text
+from app.utils.validators import sanitize_text
 from utils.orm import orm_to_df
 
 configure_logging()
