@@ -45,7 +45,7 @@ def call_llm(prompt: str, json_mode: bool = False) -> str:
             response = requests.post(
                 config.OLLAMA_URL,
                 json=payload,
-                timeout=(10, config.LLM_TIMEOUT_SECONDS),
+                timeout=(2, config.LLM_TIMEOUT_SECONDS),
             )
             response.raise_for_status()
             body = response.json()
@@ -61,8 +61,20 @@ def call_llm(prompt: str, json_mode: bool = False) -> str:
                     "error": str(exc),
                 },
             )
-            if attempt < total_attempts:
+            should_retry = attempt < total_attempts
+            local_ollama = ("localhost" in config.OLLAMA_URL) or ("127.0.0.1" in config.OLLAMA_URL)
+            fast_fail_errors = (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+            )
+            if local_ollama and isinstance(exc, fast_fail_errors):
+                # Local Ollama unavailable/slow: fail fast to deterministic fallback paths.
+                should_retry = False
+
+            if should_retry:
                 time.sleep(min(2 * attempt, 5))
+            else:
+                break
 
     logger.error(
         "llm.call.unavailable",
@@ -74,4 +86,3 @@ def call_llm(prompt: str, json_mode: bool = False) -> str:
         },
     )
     return ""
-

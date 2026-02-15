@@ -1,23 +1,17 @@
-
 import sys
 import random
 from pathlib import Path
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from faker import Faker
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.database.models import Lead, Base
-from app.core.config import get_config
+from app.core.startup import bootstrap
+from app.database.db import get_db_session
+from app.database.models import Lead
 
-# Setup DB connection
-config = get_config()
-engine = create_engine(config.DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 fake = Faker()
 
 INDUSTRIES = ['SaaS', 'Fintech', 'Healthcare', 'E-commerce', 'Manufacturing', 'Logistics', 'EdTech', 'Cybersecurity']
@@ -43,47 +37,42 @@ NEGATIVE_SIGNALS = [
     "", "", "", "", "", "" # Empty strings for clean leads
 ]
 
-def seed_20_leads():
-    db = SessionLocal()
+def seed_20_leads() -> None:
+    bootstrap()
     try:
-        print("Seeding 20 diverse leads...")
-        
-        leads = []
-        for _ in range(20):
-            # Create varied data
-            name = fake.name()
-            company = fake.company()
-            email = fake.unique.company_email()
-            role = random.choice(ROLES)
-            industry = random.choice(INDUSTRIES)
-            size = random.choice(SIZES)
-            insight = random.choice(INSIGHTS)
-            negative = random.choice(NEGATIVE_SIGNALS)
-            
-            lead = Lead(
-                name=name,
-                company=company,
-                email=email,
-                role=role,
-                industry=industry,
-                company_size=size,
-                verified_insight=insight,
-                negative_signals=negative,
-                status="New",
-                created_at=datetime.utcnow() - timedelta(days=random.randint(0, 30))
-            )
-            leads.append(lead)
-            
-        # Bulk insert
-        db.add_all(leads)
-        db.commit()
-        print(f"Successfully added {len(leads)} leads to the database.")
-        
+        with get_db_session() as db:
+            print("Seeding 20 diverse leads...")
+            leads = []
+            for _ in range(20):
+                name = fake.name()
+                company = fake.company()
+                email = fake.unique.company_email()
+                role = random.choice(ROLES)
+                industry = random.choice(INDUSTRIES)
+                size = random.choice(SIZES)
+                insight = random.choice(INSIGHTS)
+                negative = random.choice(NEGATIVE_SIGNALS)
+
+                lead = Lead(
+                    name=name,
+                    company=company,
+                    email=email,
+                    role=role,
+                    industry=industry,
+                    company_size=size,
+                    verified_insight=insight,
+                    negative_signals=negative,
+                    status="New",
+                    created_at=datetime.utcnow() - timedelta(days=random.randint(0, 30)),
+                )
+                leads.append(lead)
+
+            db.add_all(leads)
+            db.commit()
+            print(f"Successfully added {len(leads)} leads to the database.")
     except Exception as e:
         print(f"Error seeding data: {e}")
-        db.rollback()
-    finally:
-        db.close()
+
 
 if __name__ == "__main__":
     seed_20_leads()

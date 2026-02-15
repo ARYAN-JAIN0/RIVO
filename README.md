@@ -16,7 +16,7 @@ python -m venv .venv
 .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 copy .env.example .env
-python app/database/init_db.py
+python -m app.database.init_db
 python app/orchestrator.py
 ```
 
@@ -41,6 +41,63 @@ or keep your current URL and allow startup to continue while showing DB errors:
 ```bash
 DB_CONNECTIVITY_REQUIRED=false
 ```
+
+If startup cannot connect to PostgreSQL and connectivity is optional, RIVO now
+falls back to local SQLite automatically for local development.
+
+## Full Pipeline Runbook (Repeatable)
+
+Use this sequence whenever you want to run end-to-end from a clean local setup.
+
+Shortcut (PowerShell, scripted flow with review gates):
+
+```bash
+.\run_full_pipeline.ps1
+```
+
+```bash
+# 1) Initialize schema
+python -m app.database.init_db
+
+# 2) Seed leads (choose one)
+python scripts/seed_data.py
+# OR
+python scripts/seed_20_leads.py
+
+# 3) Run SDR stage (creates pending email reviews)
+python app/orchestrator.py sdr
+
+# 4) Open review dashboard and approve/reject SDR drafts
+streamlit run app/multi_agent_dashboard.py
+
+# 5) Run Sales stage (for contacted leads)
+python app/orchestrator.py sales
+
+# 6) Approve/reject pending deal reviews in dashboard
+streamlit run app/multi_agent_dashboard.py
+
+# 7) Run Negotiation stage (for proposal-sent deals)
+python app/orchestrator.py negotiation
+
+# 8) Approve/reject pending contract reviews in dashboard
+streamlit run app/multi_agent_dashboard.py
+
+# 9) Run Finance stage (for signed contracts)
+python app/orchestrator.py finance
+
+# 10) Approve/reject dunning drafts in dashboard
+streamlit run app/multi_agent_dashboard.py
+
+# 11) Verify system state
+python app/orchestrator.py health
+python scripts/view_all_data.py
+```
+
+Notes:
+
+- Human review is mandatory between stages; pipeline progression is gated by approvals.
+- `python app/orchestrator.py` runs all agents in order, but later stages will be no-op until review decisions move records forward.
+- Repeat steps 3-11 as needed for continuous operation.
 
 ## Human Review Gate
 

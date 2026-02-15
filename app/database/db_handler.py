@@ -196,8 +196,8 @@ def fetch_deals_by_status(stage: str) -> List[Deal]:
     with get_db_session() as session:
         try:
             return session.query(Deal).filter(Deal.stage == stage).all()
-        except SQLAlchemyError:
-            logger.exception("deal.fetch_by_stage.failed", extra={"event": "deal.fetch_by_stage.failed", "stage": stage})
+        except SQLAlchemyError as exc:
+            _log_db_query_failure("deal.fetch_by_stage.failed", exc, stage=stage)
             return []
 
 
@@ -237,8 +237,8 @@ def fetch_pending_deal_reviews() -> List[Deal]:
     with get_db_session() as session:
         try:
             return session.query(Deal).filter(Deal.review_status == ReviewStatus.PENDING.value).all()
-        except SQLAlchemyError:
-            logger.exception("deal.pending_reviews.fetch_failed", extra={"event": "deal.pending_reviews.fetch_failed"})
+        except SQLAlchemyError as exc:
+            _log_db_query_failure("deal.pending_reviews.fetch_failed", exc)
             return []
 
 
@@ -302,8 +302,8 @@ def fetch_contracts_by_status(status: str) -> List[Contract]:
     with get_db_session() as session:
         try:
             return session.query(Contract).filter(Contract.status == status).all()
-        except SQLAlchemyError:
-            logger.exception("contract.fetch_by_status.failed", extra={"event": "contract.fetch_by_status.failed", "status": status})
+        except SQLAlchemyError as exc:
+            _log_db_query_failure("contract.fetch_by_status.failed", exc, status=status)
             return []
 
 
@@ -343,8 +343,8 @@ def fetch_pending_contract_reviews() -> List[Contract]:
     with get_db_session() as session:
         try:
             return session.query(Contract).filter(Contract.review_status == ReviewStatus.PENDING.value).all()
-        except SQLAlchemyError:
-            logger.exception("contract.pending_reviews.fetch_failed", extra={"event": "contract.pending_reviews.fetch_failed"})
+        except SQLAlchemyError as exc:
+            _log_db_query_failure("contract.pending_reviews.fetch_failed", exc)
             return []
 
 
@@ -416,8 +416,8 @@ def fetch_invoices_by_status(status: str) -> List[Invoice]:
     with get_db_session() as session:
         try:
             return session.query(Invoice).filter(Invoice.status == status).all()
-        except SQLAlchemyError:
-            logger.exception("invoice.fetch_by_status.failed", extra={"event": "invoice.fetch_by_status.failed", "status": status})
+        except SQLAlchemyError as exc:
+            _log_db_query_failure("invoice.fetch_by_status.failed", exc, status=status)
             return []
 
 
@@ -425,8 +425,8 @@ def fetch_all_invoices() -> List[Invoice]:
     with get_db_session() as session:
         try:
             return session.query(Invoice).all()
-        except SQLAlchemyError:
-            logger.exception("invoice.fetch_all.failed", extra={"event": "invoice.fetch_all.failed"})
+        except SQLAlchemyError as exc:
+            _log_db_query_failure("invoice.fetch_all.failed", exc)
             return []
 
 
@@ -480,8 +480,8 @@ def fetch_pending_dunning_reviews() -> List[Invoice]:
     with get_db_session() as session:
         try:
             return session.query(Invoice).filter(Invoice.review_status == ReviewStatus.PENDING.value).all()
-        except SQLAlchemyError:
-            logger.exception("invoice.pending_reviews.fetch_failed", extra={"event": "invoice.pending_reviews.fetch_failed"})
+        except SQLAlchemyError as exc:
+            _log_db_query_failure("invoice.pending_reviews.fetch_failed", exc)
             return []
 
 
