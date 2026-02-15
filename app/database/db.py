@@ -60,6 +60,12 @@ def verify_database_connection() -> bool:
             conn.execute(text("SELECT 1"))
         return True
     except Exception as exc:  # pragma: no cover - exercised in deployment.
-        logger.exception("database.connection_failed", extra={"event": "database.connection_failed"})
+        if config.DB_CONNECTIVITY_REQUIRED:
+            logger.exception("database.connection_failed", extra={"event": "database.connection_failed"})
+        else:
+            logger.warning(
+                "database.connection_failed.optional",
+                extra={"event": "database.connection_failed.optional"},
+            )
         logger.error("database.connection_failed.details: %s", exc)
         return False

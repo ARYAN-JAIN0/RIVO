@@ -22,6 +22,13 @@ from app.utils.validators import sanitize_text
 logger = logging.getLogger(__name__)
 
 
+def _log_db_query_failure(event: str, exc: SQLAlchemyError, **kwargs: object) -> None:
+    """Log DB query failures concisely without full traceback spam in local degraded mode."""
+    extra = {"event": event, **kwargs}
+    logger.error("%s: %s", event, exc, extra=extra)
+
+
+
 def _audit_review(entity_type: str, entity_id: int, decision: str, notes: str = "", actor: str = "system") -> None:
     try:
         with get_db_session() as session:
@@ -47,8 +54,8 @@ def fetch_leads_by_status(status: str) -> List[Lead]:
     with get_db_session() as session:
         try:
             return session.query(Lead).filter(Lead.status == status).all()
-        except SQLAlchemyError:
-            logger.exception("db.fetch_leads_by_status.failed", extra={"event": "db.fetch_leads_by_status.failed"})
+        except SQLAlchemyError as exc:
+            _log_db_query_failure("db.fetch_leads_by_status.failed", exc, status=status)
             return []
 
 
@@ -114,8 +121,8 @@ def fetch_pending_reviews(include_structural_failed: bool = False) -> List[Lead]
             else:
                 query = query.filter(Lead.review_status == ReviewStatus.PENDING.value)
             return query.all()
-        except SQLAlchemyError:
-            logger.exception("lead.pending_reviews.fetch_failed", extra={"event": "lead.pending_reviews.fetch_failed"})
+        except SQLAlchemyError as exc:
+            _log_db_query_failure("lead.pending_reviews.fetch_failed", exc)
             return []
 
 
