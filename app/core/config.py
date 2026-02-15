@@ -29,6 +29,7 @@ class Config:
     ENV: str
     DEBUG: bool
     DATABASE_URL: str
+    DB_CONNECTIVITY_REQUIRED: bool
     LLM_API_KEY: str | None
     LLM_MODEL: str
     LLM_TEMPERATURE: float
@@ -70,6 +71,10 @@ def _build_config(env: str | None = None) -> Config:
         ENV=resolved_env,
         DEBUG=debug if resolved_env != "production" else False,
         DATABASE_URL=os.getenv("DATABASE_URL", "sqlite:///./rivo.db"),
+        DB_CONNECTIVITY_REQUIRED=_as_bool(
+            os.getenv("DB_CONNECTIVITY_REQUIRED"),
+            default=(resolved_env == "production"),
+        ),
         LLM_API_KEY=os.getenv("LLM_API_KEY"),
         LLM_MODEL=os.getenv("LLM_MODEL", "gpt-4"),
         LLM_TEMPERATURE=float(os.getenv("LLM_TEMPERATURE", "0.7")),
