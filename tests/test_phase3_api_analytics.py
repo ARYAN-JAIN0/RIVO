@@ -76,7 +76,7 @@ def _seed_deal(Session) -> int:
             tenant_id=1,
             lead_id=lead.id,
             company="Acme",
-            stage="Lead",
+            stage="Qualified",
             status="Open",
             deal_value=50000,
             probability=50.0,
@@ -139,8 +139,8 @@ def test_phase3_analytics_and_deal_routes(monkeypatch):
     override = client.post(
         f"/api/v1/sales/deals/{deal_id}/manual-override",
         headers=headers,
-        json={"stage": "Qualified", "probability": 72.5, "reason": "sales review"},
+        json={"stage": "Proposal Sent", "probability": 72.5, "reason": "sales review"},
     )
     assert override.status_code == 200
-    assert override.json()["stage"] == "Qualified"
+    assert override.json()["stage"] == "Proposal Sent"
     assert override.json()["probability"] == 72.5

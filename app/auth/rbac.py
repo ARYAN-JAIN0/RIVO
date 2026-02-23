@@ -17,6 +17,12 @@ ROLE_SCOPES: dict[str, set[str]] = {
         "reviews.decision",
         "metrics.read",
         "logs.read",
+        # CRM scopes
+        "crm.leads.read",
+        "crm.leads.write",
+        "crm.deals.read",
+        "crm.deals.write",
+        "crm.contracts.read",
     },
     "sdr": {
         "agents.sdr.run",
@@ -24,6 +30,9 @@ ROLE_SCOPES: dict[str, set[str]] = {
         "reviews.decision",
         "metrics.read",
         "logs.read",
+        # CRM scopes
+        "crm.leads.read",
+        "crm.leads.write",
     },
     "finance": {
         "agents.finance.run",
@@ -31,11 +40,20 @@ ROLE_SCOPES: dict[str, set[str]] = {
         "reviews.decision",
         "metrics.read",
         "logs.read",
+        # CRM scopes
+        "crm.invoices.read",
+        "crm.invoices.write",
+        "crm.contracts.read",
     },
     "viewer": {
         "runs.read",
         "metrics.read",
         "logs.read",
+        # CRM scopes (read-only)
+        "crm.leads.read",
+        "crm.deals.read",
+        "crm.contracts.read",
+        "crm.invoices.read",
     },
 }
 

@@ -40,6 +40,41 @@ from app.utils.orm import orm_to_df
 configure_logging()
 
 
+# ==============================================================================
+# HELPER FUNCTIONS
+# ==============================================================================
+
+def rescore_deal(deal_id: int) -> bool:
+    """Rescore a deal to generate structured explanation.
+    
+    Args:
+        deal_id: The ID of the deal to rescore
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    from app.database.db import get_db_session
+    from app.database.models import Deal, Lead
+    from app.services.sales_intelligence_service import SalesIntelligenceService
+    
+    try:
+        with get_db_session() as session:
+            deal = session.query(Deal).filter(Deal.id == deal_id).first()
+            if not deal:
+                return False
+            lead = session.query(Lead).filter(Lead.id == deal.lead_id).first()
+            if not lead:
+                return False
+        
+        service = SalesIntelligenceService()
+        result = service.create_or_update_deal(lead, actor="dashboard_rescore")
+        return result is not None
+    except Exception as e:
+        import logging
+        logging.error(f"rescore_deal failed: {e}")
+        return False
+
+
 # Page config
 st.set_page_config(
     page_title="Revo – Multi-Agent Review Panel",
@@ -65,7 +100,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Title
-st.title("🧠 Revo – Human-in-the-Loop Review Dashboard")
+st.title("Rivo – Human-in-the-Loop Review Dashboard")
 st.markdown("Review AI-generated content across the entire sales pipeline.")
 
 # Create tabs for each agent
@@ -199,12 +234,122 @@ with tab2:
                     with col_c:
                         st.metric("BANT Score", f"{score}/100")
                     
-                    # Qualification notes
+                    # AI Qualification Analysis - show probability explanation
+                    probability_explanation = deal.get('probability_explanation', '') or ''
+                    if probability_explanation:
+                        st.text_area(
+                            "AI Qualification Analysis",
+                            value=probability_explanation,
+                            height=150,
+                            key=f"ai_analysis_{deal_id}",
+                            disabled=True  # Read-only
+                        )
+                    else:
+                        st.info("No AI qualification analysis available for this deal.")
+                    
+                    # Probability and confidence metrics
+                    col_p1, col_p2, col_p3 = st.columns(3)
+                    with col_p1:
+                        prob = deal.get('probability', 0) or 0
+                        st.metric("Win Probability", f"{prob:.0f}%")
+                    with col_p2:
+                        confidence = deal.get('probability_confidence', 0) or 0
+                        st.metric("Confidence", f"{confidence}/100")
+                    with col_p3:
+                        segment = deal.get('segment_tag', 'N/A') or 'N/A'
+                        st.metric("Segment", segment)
+                    
+                    # Deal Intelligence Panel - Structured Explanation
+                    breakdown = deal.get('probability_breakdown', {}) or {}
+                    # Check if breakdown contains the new structured explanation format
+                    has_structured_explanation = isinstance(breakdown, dict) and 'positive_factors' in breakdown
+                    
+                    if has_structured_explanation:
+                        with st.expander("🔎 Deal Intelligence", expanded=False):
+                            # Probability and Confidence row
+                            col_pi, col_ci = st.columns(2)
+                            with col_pi:
+                                prob_val = breakdown.get('probability', 0)
+                                st.metric("Win Probability", f"{prob_val:.0f}%")
+                            with col_ci:
+                                confidence_level = breakdown.get('confidence', 'Medium')
+                                confidence_colors = {'High': '🟢', 'Medium': '🟡', 'Low': '🔴'}
+                                confidence_icon = confidence_colors.get(confidence_level, '🟡')
+                                st.metric("Confidence Level", f"{confidence_icon} {confidence_level}")
+                            
+                            st.markdown("---")
+                            
+                            # Positive Factors (Strengths)
+                            positive_factors = breakdown.get('positive_factors', [])
+                            if positive_factors:
+                                st.markdown("**✅ Strengths**")
+                                for factor in positive_factors:
+                                    st.markdown(f"- {factor}")
+                            
+                            # Negative Factors (Concerns)
+                            negative_factors = breakdown.get('negative_factors', [])
+                            if negative_factors:
+                                st.markdown("**⚠️ Concerns**")
+                                for factor in negative_factors:
+                                    st.markdown(f"- {factor}")
+                            
+                            # Risk Flags
+                            risk_flags = breakdown.get('risk_flags', [])
+                            if risk_flags:
+                                st.markdown("**🚨 Risk Flags**")
+                                for flag in risk_flags:
+                                    st.markdown(f"- {flag}")
+                            
+                            st.markdown("---")
+                            
+                            # Strategic Fit
+                            strategic_fit = breakdown.get('strategic_fit', 'Not assessed')
+                            st.markdown(f"**🎯 Strategic Fit:** {strategic_fit}")
+                            
+                            # Recommendation with color coding
+                            recommendation = breakdown.get('recommendation', 'REVIEW')
+                            rec_colors = {'APPROVE': '🟢', 'REVIEW': '🟡', 'REJECT': '🔴'}
+                            rec_icon = rec_colors.get(recommendation, '🟡')
+                            
+                            # Display recommendation with appropriate styling
+                            if recommendation == 'APPROVE':
+                                st.success(f"**📋 System Recommendation:** {rec_icon} {recommendation}")
+                            elif recommendation == 'REJECT':
+                                st.error(f"**📋 System Recommendation:** {rec_icon} {recommendation}")
+                            else:
+                                st.warning(f"**📋 System Recommendation:** {rec_icon} {recommendation}")
+                    else:
+                        # Fallback for deals without structured explanation
+                        with st.expander("🔎 Deal Intelligence", expanded=False):
+                            st.info("📊 Structured explanation not available for this deal.")
+                            st.caption("This deal was scored before the explainability feature was added. Click 'Rescore Deal' to generate the explanation.")
+                            
+                            # Show basic breakdown if available (old format)
+                            if breakdown:
+                                st.markdown("**Factor Scores (Legacy)**")
+                                for factor, score in breakdown.items():
+                                    # Format factor name for display
+                                    display_name = factor.replace('_', ' ').title()
+                                    st.write(f"- {display_name}: {score}")
+                            
+                            st.markdown("---")
+                            
+                            # Rescore button
+                            if st.button("🔄 Rescore Deal", key=f"rescore_{deal_id}"):
+                                with st.spinner("Rescoring deal..."):
+                                    success = rescore_deal(deal_id)
+                                    if success:
+                                        st.success("Deal rescored successfully! Refreshing...")
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to rescore deal. Please try again.")
+                    
+                    # Additional notes
                     notes = deal.get('notes', '') or ''
                     st.text_area(
-                        "Qualification Assessment",
+                        "Additional Notes",
                         value=notes,
-                        height=200,
+                        height=100,
                         key=f"sales_notes_{deal_id}",
                         disabled=True  # Read-only
                     )
@@ -417,6 +562,8 @@ with st.sidebar:
         # Refresh button
         if st.button("🔄 Refresh Dashboard"):
             st.rerun()
+
     
     except Exception as e:
         st.error(f"Error loading metrics: {e}")
+

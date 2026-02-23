@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import logging
+from typing import Any, Optional
+
 from pydantic import BaseModel, Field, ValidationError, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 FORBIDDEN_PLACEHOLDER_TOKENS = (
@@ -44,4 +50,30 @@ def parse_schema(model_cls: type[BaseModel], payload: str) -> BaseModel:
         return model_cls.model_validate_json(payload)
     except ValidationError as exc:
         raise ValueError(str(exc)) from exc
+
+
+def safe_parse_json(payload: str, default: Optional[dict[str, Any]] = None) -> Optional[dict[str, Any]]:
+    """Safely parse JSON from LLM response with fallback.
+    
+    Args:
+        payload: Raw string potentially containing JSON
+        default: Default value to return on parse failure (default: None)
+    
+    Returns:
+        Parsed dict on success, default value on failure.
+    
+    Usage:
+        data = safe_parse_json(llm_response, default={"score": 0, "reasoning": ""})
+    """
+    if not payload:
+        return default
+    
+    try:
+        return json.loads(payload.strip())
+    except (json.JSONDecodeError, TypeError, AttributeError) as e:
+        logger.warning(
+            "schema.json_parse_failed",
+            extra={"event": "schema.json_parse_failed", "error": str(e)},
+        )
+        return default
 

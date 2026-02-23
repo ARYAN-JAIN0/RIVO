@@ -24,6 +24,7 @@ from app.schemas.runs import (
     RunRetryRequest,
     RunTriggerRequest,
 )
+from app.schemas.scraper import ScrapedLeadSchema, ScraperRejection, ScraperResult
 
 __all__ = [
     "APIEnvelope",
@@ -54,6 +55,9 @@ __all__ = [
     "RunResponse",
     "RunRetryRequest",
     "RunTriggerRequest",
+    "ScrapedLeadSchema",
+    "ScraperRejection",
+    "ScraperResult",
     "TokenClaims",
     "TokenResponse",
 ]

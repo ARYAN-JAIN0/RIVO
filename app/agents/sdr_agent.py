@@ -28,10 +28,14 @@ from app.utils.validators import deterministic_email_quality_score, sanitize_tex
 
 logger = logging.getLogger(__name__)
 
-APPROVAL_THRESHOLD = 85
-AUTO_SEND_THRESHOLD = 92
-SIGNAL_THRESHOLD = 60
+# Threshold constants - clarified purpose
+REVIEW_QUEUE_THRESHOLD = 85  # Minimum score to enter review queue (not used for auto-send)
+AUTO_SEND_THRESHOLD = 92     # Score for immediate send without human review
+SIGNAL_THRESHOLD = 60        # Minimum signal score to proceed with email generation
 PROMPT_VERSION = "sdr-v2.0"
+
+# Legacy alias for backwards compatibility
+APPROVAL_THRESHOLD = REVIEW_QUEUE_THRESHOLD
 
 
 def safe_str(val: object | None) -> str:
@@ -193,8 +197,14 @@ Email:
     if response:
         try:
             parsed = parse_schema(SDREmailEvaluation, response)
-            llm_score = int(parsed.score)
-        except ValueError:
+            # Safe score extraction with bounds checking
+            raw_score = getattr(parsed, "score", 0)
+            llm_score = max(0, min(int(raw_score), 100))
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.warning(
+                "sdr.evaluation.parse_failed",
+                extra={"event": "sdr.evaluation.parse_failed", "error": str(e)},
+            )
             llm_score = 0
 
     # Weighted blend to reduce single-model self-evaluation bias.

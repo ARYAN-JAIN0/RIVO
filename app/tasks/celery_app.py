@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
+import importlib
 from types import SimpleNamespace
 
 try:  # pragma: no cover - exercised when celery is installed.
@@ -69,8 +70,56 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
+    imports=("app.tasks.agent_tasks", "app.tasks.scheduler"),
 )
 
 # Local/dev convenience: run tasks synchronously when requested.
 if os.getenv("CELERY_TASK_ALWAYS_EAGER", "false").lower() in {"1", "true", "yes", "on"}:
     celery_app.conf.task_always_eager = True
+
+
+def _get_schedule_interval_hours() -> int:
+    """Get the automated pipeline interval from environment or default to 6 hours."""
+    try:
+        return int(os.getenv("AUTO_PIPELINE_INTERVAL_HOURS", "6"))
+    except (ValueError, TypeError):
+        return 6
+
+
+def _is_auto_pipeline_enabled() -> bool:
+    """Check if automated pipeline is enabled via environment variable."""
+    return os.getenv("AUTO_PIPELINE_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+
+
+def configure_beat_schedule() -> None:
+    """Configure Celery Beat schedule for automated pipeline.
+
+    The schedule is only added if AUTO_PIPELINE_ENABLED is true.
+    This allows for environment-based control of the scheduler.
+    """
+    if _is_auto_pipeline_enabled():
+        interval_hours = _get_schedule_interval_hours()
+        celery_app.conf.beat_schedule = {
+            "automated-pipeline-scheduled": {
+                "task": "tasks.automated_pipeline_run",
+                "schedule": interval_hours * 3600,  # Convert hours to seconds
+                "options": {"queue": "default"},
+            },
+        }
+
+
+# Configure beat schedule on module load
+configure_beat_schedule()
+
+
+def register_task_modules() -> None:
+    """Import task modules so decorators register Celery tasks eagerly."""
+    for module_path in ("app.tasks.agent_tasks", "app.tasks.scheduler"):
+        try:
+            importlib.import_module(module_path)
+        except Exception:
+            # Worker startup remains resilient in environments where optional modules fail.
+            continue
+
+
+register_task_modules()

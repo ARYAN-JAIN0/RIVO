@@ -27,6 +27,28 @@ def _apply_rate_limit(min_interval_seconds: float) -> None:
 
 
 def call_llm(prompt: str, json_mode: bool = False) -> str:
+    """Call Ollama LLM with retry logic and rate limiting.
+    
+    Args:
+        prompt: The prompt to send to the LLM
+        json_mode: If True, requests JSON-formatted response
+    
+    Returns:
+        LLM response string on success, empty string "" on failure.
+        
+    IMPORTANT: Empty string return behavior:
+        - Returns "" when Ollama is unavailable (connection refused, timeout)
+        - Returns "" when all retry attempts are exhausted
+        - Returns "" when response parsing fails
+        - Callers MUST handle empty string as failure case and use fallback logic
+        
+    Usage:
+        response = call_llm(prompt, json_mode=True)
+        if response:
+            data = json.loads(response)  # safe to parse
+        else:
+            data = {"fallback": "value"}  # use fallback
+    """
     config = get_config()
     payload = {
         "model": config.OLLAMA_MODEL,
@@ -43,7 +65,7 @@ def call_llm(prompt: str, json_mode: bool = False) -> str:
         try:
             _apply_rate_limit(config.LLM_MIN_INTERVAL_SECONDS)
             response = requests.post(
-                config.OLLAMA_URL,
+                config.OLLAMA_GENERATE_URL,
                 json=payload,
                 timeout=(2, config.LLM_TIMEOUT_SECONDS),
             )
@@ -62,7 +84,7 @@ def call_llm(prompt: str, json_mode: bool = False) -> str:
                 },
             )
             should_retry = attempt < total_attempts
-            local_ollama = ("localhost" in config.OLLAMA_URL) or ("127.0.0.1" in config.OLLAMA_URL)
+            local_ollama = ("localhost" in config.OLLAMA_GENERATE_URL) or ("127.0.0.1" in config.OLLAMA_GENERATE_URL)
             fast_fail_errors = (
                 requests.exceptions.ConnectionError,
                 requests.exceptions.Timeout,
@@ -80,7 +102,7 @@ def call_llm(prompt: str, json_mode: bool = False) -> str:
         "llm.call.unavailable",
         extra={
             "event": "llm.call.unavailable",
-            "ollama_url": config.OLLAMA_URL,
+            "ollama_url": config.OLLAMA_GENERATE_URL,
             "model": config.OLLAMA_MODEL,
             "error": str(last_error) if last_error else "unknown",
         },

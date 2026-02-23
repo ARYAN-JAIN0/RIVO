@@ -171,10 +171,12 @@ class Contract(Base):
     __table_args__ = (
         Index("idx_contracts_status", "status"),
         Index("idx_contracts_review_status", "review_status"),
+        Index("idx_contracts_tenant_id", "tenant_id"),
         UniqueConstraint("deal_id", name="uq_contracts_deal_id"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
     contract_code = Column(String, unique=True)
     deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
     lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False)
@@ -183,6 +185,8 @@ class Contract(Base):
     negotiation_points = Column(Text)
     objections = Column(Text)
     proposed_solutions = Column(Text)
+    negotiation_turn = Column(Integer, default=0)  # Track negotiation rounds
+    confidence_score = Column(Integer, default=0)  # Confidence score from negotiation
     signed_date = Column(DateTime)
     contract_value = Column(Integer)
     last_updated = Column(DateTime, default=datetime.utcnow)
@@ -190,6 +194,7 @@ class Contract(Base):
 
     deal = relationship("Deal")
     lead = relationship("Lead")
+    tenant = relationship("Tenant")
 
 
 class Invoice(Base):
@@ -239,6 +244,24 @@ class Tenant(Base):
     name = Column(String, nullable=False, unique=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
+        Index("idx_users_tenant_role", "tenant_id", "role"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    email = Column(String(320), nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    role = Column(String(32), nullable=False, default="viewer")
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    tenant = relationship("Tenant")
 
 
 class EmailLog(Base):

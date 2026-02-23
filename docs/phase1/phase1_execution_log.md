@@ -1,4 +1,4 @@
-# Phase 1 Execution Log
+﻿# Phase 1 Execution Log
 
 Date: 2026-02-14
 
@@ -30,12 +30,12 @@ Evidence checked:
   - `app/services/`: service modules including `llm_client.py`, `email_sender.py`, `invoice_generator.py`
   - `app/multi_agent_dashboard.py`, `app/review_dashboard.py`
   - `migrations/versions/20260213_0001_baseline_schema.py`
-  - `workers/scheduler.py`
+  - `app/tasks/scheduler.py` (current active scheduler; historical placeholder was `workers/scheduler.py`, removed in cleanup)
   - `tests/` current suite
 - Placeholder/stub markers verified:
   - (baseline snapshot prior to scaffold implementation)
   - `app/main.py` contains `# Entry point (later FastAPI)`
-  - `workers/scheduler.py` contains placeholder comment only
+- historical snapshot had `workers/scheduler.py` placeholder comment only (now removed; superseded by `app/tasks/scheduler.py`)
 - Temp artifact set (`tmpclaude-*`) exists in repo root.
 - Baseline tests executed:
   - Command: `.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider`
@@ -57,7 +57,7 @@ Actions completed:
   - `app/auth/*`
   - `app/utils/*`
   - missing core modules (`app/core/logging.py`, `app/core/security.py`, `app/core/dependencies.py`)
-  - pluralized service facades (`leads_service.py`, `deals_service.py`, `contracts_service.py`, `invoices_service.py`, `review_service.py`, `run_service.py`)
+  - historical scaffold included pluralized service facades (`leads_service.py`, `deals_service.py`, `contracts_service.py`, `invoices_service.py`); these were later consolidated to singular service modules (`lead_service.py`, `deal_service.py`, `contract_service.py`, `invoice_service.py`) while retaining `review_service.py` and `run_service.py`
   - agent base contract (`app/agents/base_agent.py`)
 - Verified all section 2.1 target paths exist via `Test-Path` batch check.
 - Regression test verification:
@@ -272,3 +272,4 @@ Final verification:
   - Manual task checklist items count: `7`
 
 Phase 1 execution sequence is fully completed and verified.
+

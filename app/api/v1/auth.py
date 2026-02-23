@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from sqlalchemy import func
+
 from app.api._compat import APIRouter, HTTPException, status
 from app.auth.jwt import create_token_pair, decode_jwt
 from app.core.config import get_config
+from app.core.security import verify_password
+from app.database.db import get_db_session
+from app.database.models import User
 from app.core.exceptions import AuthenticationError
 from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
 
@@ -13,14 +18,20 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest) -> TokenResponse:
-    if not payload.email.strip() or not payload.password.strip():
+    email = payload.email.strip().lower()
+    password = payload.password.strip()
+    if not email or not password:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
 
     cfg = get_config()
+    with get_db_session() as session:
+        user = session.query(User).filter(func.lower(User.email) == email).first()
+        if not user or not user.is_active or not verify_password(password=password, hashed_password=user.hashed_password, pepper=cfg.PASSWORD_PEPPER):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
     tokens = create_token_pair(
-        user_id=1,
-        tenant_id=1,
-        role="admin",
+        user_id=int(user.id),
+        tenant_id=int(user.tenant_id),
+        role=str(user.role),
         secret=cfg.JWT_SECRET,
         permissions_version=cfg.JWT_PERMISSIONS_VERSION,
         access_ttl_minutes=cfg.JWT_ACCESS_TTL_MINUTES,

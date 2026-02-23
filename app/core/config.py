@@ -20,6 +20,37 @@ def _as_bool(value: str | None, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _strip_ollama_suffix(url: str) -> str:
+    normalized = url.rstrip("/")
+    lowered = normalized.lower()
+    for suffix in ("/api/generate", "/api/embeddings", "/api/tags"):
+        if lowered.endswith(suffix):
+            return normalized[: -len(suffix)]
+    return normalized
+
+
+def _resolve_ollama_urls() -> tuple[str, str, str]:
+    raw_base = os.getenv("OLLAMA_URL")
+    generate_url = os.getenv("OLLAMA_GENERATE_URL")
+    embedding_url = os.getenv("OLLAMA_EMBEDDING_URL")
+
+    if raw_base:
+        base = _strip_ollama_suffix(raw_base)
+    elif generate_url:
+        base = _strip_ollama_suffix(generate_url)
+    elif embedding_url:
+        base = _strip_ollama_suffix(embedding_url)
+    else:
+        base = "http://localhost:11434"
+
+    if not generate_url:
+        generate_url = f"{base}/api/generate"
+    if not embedding_url:
+        embedding_url = f"{base}/api/embeddings"
+
+    return base, generate_url.rstrip("/"), embedding_url.rstrip("/")
+
+
 @dataclass(frozen=True)
 class Config:
     """Runtime configuration with validation."""
@@ -33,7 +64,10 @@ class Config:
     LLM_API_KEY: str | None
     LLM_MODEL: str
     LLM_TEMPERATURE: float
+    # Backward-compatible base URL retained for legacy callsites.
     OLLAMA_URL: str
+    OLLAMA_GENERATE_URL: str
+    OLLAMA_EMBEDDING_URL: str
     OLLAMA_MODEL: str
     LLM_TIMEOUT_SECONDS: int
     LLM_MAX_RETRIES: int
@@ -55,6 +89,17 @@ class Config:
     API_PREFIX: str
     LOG_LEVEL: str
     LOG_FILE: str
+    # Automated Pipeline Configuration
+    AUTO_PIPELINE_ENABLED: bool
+    AUTO_PIPELINE_INTERVAL_HOURS: int
+    AUTO_PIPELINE_TENANT_ID: int
+    # Lead Scraper Configuration
+    AUTO_LEAD_SCRAPE_INTERVAL_HOURS: int
+    SCRAPER_RPS: float
+    SCRAPER_BURST: int
+    SCRAPER_DAILY_CAP: int
+    # Security Configuration
+    PASSWORD_PEPPER: str
 
     @property
     def is_production(self) -> bool:
@@ -64,6 +109,7 @@ class Config:
 def _build_config(env: str | None = None) -> Config:
     resolved_env = (env or os.getenv("ENV", "development")).strip().lower()
     debug = _as_bool(os.getenv("DEBUG"), default=(resolved_env != "production"))
+    ollama_base_url, ollama_generate_url, ollama_embedding_url = _resolve_ollama_urls()
 
     config = Config(
         APP_NAME="RIVO",
@@ -78,7 +124,9 @@ def _build_config(env: str | None = None) -> Config:
         LLM_API_KEY=os.getenv("LLM_API_KEY"),
         LLM_MODEL=os.getenv("LLM_MODEL", "gpt-4"),
         LLM_TEMPERATURE=float(os.getenv("LLM_TEMPERATURE", "0.7")),
-        OLLAMA_URL=os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate"),
+        OLLAMA_URL=ollama_base_url,
+        OLLAMA_GENERATE_URL=ollama_generate_url,
+        OLLAMA_EMBEDDING_URL=ollama_embedding_url,
         OLLAMA_MODEL=os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
         LLM_TIMEOUT_SECONDS=int(os.getenv("LLM_TIMEOUT_SECONDS", "90")),
         LLM_MAX_RETRIES=int(os.getenv("LLM_MAX_RETRIES", "2")),
@@ -100,6 +148,17 @@ def _build_config(env: str | None = None) -> Config:
         API_PREFIX=os.getenv("API_PREFIX", "/api/v1"),
         LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO").upper(),
         LOG_FILE=os.getenv("LOG_FILE", "rivo.log"),
+        # Automated Pipeline Configuration
+        AUTO_PIPELINE_ENABLED=_as_bool(os.getenv("AUTO_PIPELINE_ENABLED"), default=False),
+        AUTO_PIPELINE_INTERVAL_HOURS=int(os.getenv("AUTO_PIPELINE_INTERVAL_HOURS", "6")),
+        AUTO_PIPELINE_TENANT_ID=int(os.getenv("AUTO_PIPELINE_TENANT_ID", "1")),
+        # Lead Scraper Configuration
+        AUTO_LEAD_SCRAPE_INTERVAL_HOURS=int(os.getenv("AUTO_LEAD_SCRAPE_INTERVAL_HOURS", "1")),
+        SCRAPER_RPS=float(os.getenv("SCRAPER_RPS", "2.0")),
+        SCRAPER_BURST=int(os.getenv("SCRAPER_BURST", "10")),
+        SCRAPER_DAILY_CAP=int(os.getenv("SCRAPER_DAILY_CAP", "100")),
+        # Security Configuration
+        PASSWORD_PEPPER=os.getenv("PASSWORD_PEPPER", ""),
     )
     _validate_config(config)
     return config
@@ -115,8 +174,16 @@ def _validate_database_url(database_url: str) -> None:
         raise ConfigurationError("PostgreSQL DATABASE_URL is missing hostname.")
 
 
+def _validate_http_url(name: str, value: str) -> None:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ConfigurationError(f"{name} must be a valid http(s) URL.")
+
+
 def _validate_config(config: Config) -> None:
     _validate_database_url(config.DATABASE_URL)
+    _validate_http_url("OLLAMA_GENERATE_URL", config.OLLAMA_GENERATE_URL)
+    _validate_http_url("OLLAMA_EMBEDDING_URL", config.OLLAMA_EMBEDDING_URL)
 
     if config.LLM_TIMEOUT_SECONDS < 1:
         raise ConfigurationError("LLM_TIMEOUT_SECONDS must be >= 1.")
@@ -132,6 +199,24 @@ def _validate_config(config: Config) -> None:
         raise ConfigurationError("LOG_LEVEL must be one of DEBUG/INFO/WARNING/ERROR/CRITICAL.")
     if config.is_production and "change_me" in config.DATABASE_URL.lower():
         raise ConfigurationError("Production DATABASE_URL uses placeholder credentials.")
+    # Automated Pipeline validation
+    if config.AUTO_PIPELINE_INTERVAL_HOURS < 1:
+        raise ConfigurationError("AUTO_PIPELINE_INTERVAL_HOURS must be >= 1.")
+    if config.AUTO_PIPELINE_INTERVAL_HOURS > 24:
+        raise ConfigurationError("AUTO_PIPELINE_INTERVAL_HOURS must be <= 24.")
+    if config.AUTO_PIPELINE_TENANT_ID < 1:
+        raise ConfigurationError("AUTO_PIPELINE_TENANT_ID must be >= 1.")
+    # Lead Scraper validation
+    if config.AUTO_LEAD_SCRAPE_INTERVAL_HOURS < 1:
+        raise ConfigurationError("AUTO_LEAD_SCRAPE_INTERVAL_HOURS must be >= 1.")
+    if config.AUTO_LEAD_SCRAPE_INTERVAL_HOURS > 24:
+        raise ConfigurationError("AUTO_LEAD_SCRAPE_INTERVAL_HOURS must be <= 24.")
+    if config.SCRAPER_RPS <= 0:
+        raise ConfigurationError("SCRAPER_RPS must be > 0.")
+    if config.SCRAPER_BURST < 1:
+        raise ConfigurationError("SCRAPER_BURST must be >= 1.")
+    if config.SCRAPER_DAILY_CAP < 1:
+        raise ConfigurationError("SCRAPER_DAILY_CAP must be >= 1.")
 
 
 @lru_cache(maxsize=8)

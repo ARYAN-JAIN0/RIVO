@@ -92,13 +92,19 @@ Output JSON only:
   "confidence": 85
 }}
 """
-    response = call_llm(prompt, json_mode=True).strip()
+    response = call_llm(prompt, json_mode=True)
     if response:
         try:
-            parsed = parse_schema(DunningGeneration, response)
-            return sanitize_text(parsed.email_body, max_len=2000), int(parsed.confidence)
-        except ValueError:
-            pass
+            parsed = parse_schema(DunningGeneration, response.strip())
+            # Safe confidence extraction with bounds checking
+            raw_confidence = getattr(parsed, "confidence", 0)
+            confidence = max(0, min(int(raw_confidence), 100))
+            return sanitize_text(parsed.email_body, max_len=2000), confidence
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.warning(
+                "finance.dunning.parse_failed",
+                extra={"event": "finance.dunning.parse_failed", "error": str(e)},
+            )
 
     fallback_templates = {
         "friendly_reminder": (

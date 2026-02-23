@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from app.core.enums import DealStage, LeadStatus
 from app.database.db import get_db_session
 from app.database.models import Deal, DealStageAudit, EmailLog, Lead
 from app.services.opportunity_scoring_service import OpportunityScoringService
@@ -12,14 +13,16 @@ from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
-PIPELINE_STAGES = ["Lead", "Qualified", "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost"]
+# Pipeline stages aligned with DealStage enum
+# Note: "Lead" stage removed - deals start at "Qualified" when created from Contacted leads
+PIPELINE_STAGES = [DealStage.QUALIFIED.value, DealStage.PROPOSAL_SENT.value, DealStage.WON.value, DealStage.LOST.value]
+
+# Allowed stage transitions based on DealStage enum
 ALLOWED_STAGE_TRANSITIONS = {
-    "Lead": {"Qualified", "Closed Lost"},
-    "Qualified": {"Proposal Sent", "Closed Lost"},
-    "Proposal Sent": {"Negotiation", "Closed Won", "Closed Lost"},
-    "Negotiation": {"Closed Won", "Closed Lost"},
-    "Closed Won": set(),
-    "Closed Lost": set(),
+    DealStage.QUALIFIED.value: {DealStage.PROPOSAL_SENT.value, DealStage.LOST.value},
+    DealStage.PROPOSAL_SENT.value: {DealStage.WON.value, DealStage.LOST.value},
+    DealStage.WON.value: set(),
+    DealStage.LOST.value: set(),
 }
 
 
@@ -64,14 +67,43 @@ class SalesIntelligenceService:
                 .count()
             )
 
-    def create_or_update_deal(self, lead: Lead, actor: str = "sales_agent") -> Deal:
+    def create_or_update_deal(self, lead: Lead, actor: str = "sales_agent") -> Deal | None:
+        """Create or update a deal for a lead.
+        
+        Args:
+            lead: The lead to create/update a deal for
+            actor: The actor performing this action
+            
+        Returns:
+            Deal object if successful, None if lead is not Contacted
+        """
+        # Guard clause: lead must be Contacted before creating deal
+        if lead.status != LeadStatus.CONTACTED.value:
+            logger.warning(
+                "sales.lead_not_contacted",
+                extra={
+                    "event": "sales.lead_not_contacted",
+                    "lead_id": lead.id,
+                    "status": lead.status,
+                },
+            )
+            return None
+
         deal_value = 100000 if (lead.company_size or "").lower().find("enterprise") >= 0 else 25000
         engagement_count = self._email_engagement_count(lead.tenant_id, lead.id)
         close_days = 30 if engagement_count >= 3 else 60
         segment = self.segment_lead(lead, deal_value, engagement_count, close_days)
 
-        score = self.scoring.score(lead, email_log_count=engagement_count)
+        # Calculate margin first so we can pass it to scoring
         margin_result = self.calculate_margin(deal_value=deal_value, cost_estimate=int(deal_value * 0.65))
+        
+        # Score with margin and segment for structured explanation
+        score = self.scoring.score(
+            lead, 
+            email_log_count=engagement_count,
+            margin=margin_result.margin,
+            segment=segment
+        )
 
         with get_db_session() as session:
             deal = session.query(Deal).filter(Deal.lead_id == lead.id).first()
@@ -80,18 +112,26 @@ class SalesIntelligenceService:
                     tenant_id=lead.tenant_id,
                     lead_id=lead.id,
                     company=lead.company,
-                    stage="Lead",
+                    stage=DealStage.QUALIFIED.value,  # Start at Qualified for Contacted leads
                     status="Open",
                 )
                 session.add(deal)
                 session.flush()
+                logger.info(
+                    "sales.deal.created",
+                    extra={"event": "sales.deal.created", "lead_id": lead.id, "deal_id": deal.id},
+                )
 
             deal.deal_value = deal_value
             deal.acv = deal_value
             deal.qualification_score = int(score.rule_score)
             deal.probability = score.final_probability
             deal.probability_confidence = score.confidence
-            deal.probability_breakdown = score.breakdown
+            # Store structured explanation if available, otherwise fall back to breakdown
+            if score.deal_explanation:
+                deal.probability_breakdown = OpportunityScoringService.deal_explanation_to_dict(score.deal_explanation)
+            else:
+                deal.probability_breakdown = score.breakdown
             deal.probability_explanation = score.explanation
             deal.expected_close_date = date.today() + timedelta(days=close_days)
             deal.cost_estimate = int(deal_value * 0.65)

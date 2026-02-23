@@ -1,4 +1,4 @@
-# Revo Phase 1 – Architecture Audit and Foundation Plan
+﻿# Revo Phase 1 â€“ Architecture Audit and Foundation Plan
 
 ## Scope and execution boundaries
 - This Phase 1 deliverable performs a deep repository audit and provides implementation-ready blueprints.
@@ -17,7 +17,7 @@
 - `app/multi_agent_dashboard.py`, `app/review_dashboard.py`: Streamlit UIs tightly coupled to DB handler layer.
 - `memory/`: optional Chroma + NetworkX stores with graceful degradation.
 - `migrations/`: Alembic baseline migration (`20260213_0001`).
-- `workers/`: scheduler placeholder only.
+- `app/tasks/`: active task queue and scheduler modules (`app/tasks/scheduler.py`).
 - `tests/`: unit-level tests focused on safety gates and orchestration behavior.
 
 ### 1.2 What currently works
@@ -56,12 +56,12 @@
 
 ### 1.4 Stub / dummy / placeholder areas
 1. `app/main.py`
-   - comment indicates “later FastAPI”, currently runs SDR script entry point.
-2. `workers/scheduler.py`
+   - comment indicates â€œlater FastAPIâ€, currently runs SDR script entry point.
+2. `workers/scheduler.py` (historical placeholder, later removed)
    - explicit placeholder file with no scheduler implementation.
 3. `app/services/invoice_generator.py`
    - optional utility with print-based logging and standalone usage, not integrated into resilient workflows.
-4. `db/schema.sql`
+4. `db/schema.sql` (historical legacy artifact, later removed)
    - legacy SQL artifact not source-of-truth relative to ORM + Alembic.
 5. Multiple `tmpclaude-*` files in repo root
    - environment artifacts, non-functional application assets.
@@ -125,10 +125,10 @@ app/
       prompts.py
       reviews.py
   services/
-    leads_service.py
-    deals_service.py
-    contracts_service.py
-    invoices_service.py
+    lead_service.py
+    deal_service.py
+    contract_service.py
+    invoice_service.py
     review_service.py
     run_service.py
   agents/
@@ -459,7 +459,7 @@ docs/
     target_sqlalchemy_models.py
 ```
 
-**Phase 1 Completed – Ready for Phase 2**
+**Phase 1 Completed â€“ Ready for Phase 2**
     alembic_migration_sequence_plan.md
     phase1_architecture_audit_and_foundation_plan.md
     phase1_execution_log.md
@@ -470,3 +470,4 @@ Execution evidence is recorded in:
 - `docs/phase1/phase1_execution_log.md`
 
 **Phase 1 Completed - Ready for Phase 2**
+

@@ -545,3 +545,321 @@ def track_reply(lead_id: int, authorization: str | None = Header(default=None, a
         lead.next_followup_at = None
         session.commit()
     return {"status": "ok", "lead_id": lead_id}
+
+
+# ==============================================================================
+# CRM DASHBOARD ENDPOINTS
+# ==============================================================================
+
+from app.services.crm_service import (
+    CRMService,
+    InvalidSortFieldError,
+    InvalidStatusError,
+    TenantOwnershipError,
+)
+
+crm_service = CRMService()
+
+
+class ApproveLeadRequest(BaseModel):
+    edited_email: str | None = Field(default=None, max_length=12000)
+
+
+class RejectLeadRequest(BaseModel):
+    reason: str | None = Field(default="", max_length=500)
+
+
+class OverrideDealStageRequest(BaseModel):
+    new_stage: str = Field(..., max_length=40)
+    reason: str | None = Field(default="", max_length=500)
+
+
+class SignContractRequest(BaseModel):
+    pass
+
+
+class MarkInvoicePaidRequest(BaseModel):
+    pass
+
+
+@router.get("/crm/leads")
+def crm_list_leads(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    sort_by: str = Query(default="created_at"),
+    sort_order: str = Query(default="desc"),
+    search: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    review_status: str | None = Query(default=None),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Paginated lead list for CRM dashboard."""
+    user = _authorize(authorization, scopes=["crm.leads.read"])
+    try:
+        result = crm_service.get_leads(
+            tenant_id=user.tenant_id,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            search=search,
+            status=status,
+            review_status=review_status,
+        )
+        return {
+            "items": result.items,
+            "total": result.total,
+            "page": result.page,
+            "page_size": result.page_size,
+            "total_pages": result.total_pages,
+        }
+    except InvalidSortFieldError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except InvalidStatusError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/crm/leads/{lead_id}/approve")
+def crm_approve_lead(
+    lead_id: int,
+    payload: ApproveLeadRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Approve a lead draft via CRM."""
+    user = _authorize(authorization, scopes=["crm.leads.write"])
+    try:
+        lead = crm_service.approve_lead_draft_safe(
+            tenant_id=user.tenant_id,
+            lead_id=lead_id,
+            edited_email=payload.edited_email,
+            actor=f"crm:user:{user.user_id}",
+        )
+        if not lead:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="lead not found")
+        return {
+            "status": "ok",
+            "lead_id": lead.id,
+            "status_value": lead.status,
+            "review_status": lead.review_status,
+        }
+    except TenantOwnershipError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.post("/crm/leads/{lead_id}/reject")
+def crm_reject_lead(
+    lead_id: int,
+    payload: RejectLeadRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Reject a lead draft via CRM."""
+    user = _authorize(authorization, scopes=["crm.leads.write"])
+    try:
+        lead = crm_service.reject_lead_draft_safe(
+            tenant_id=user.tenant_id,
+            lead_id=lead_id,
+            reason=payload.reason or "",
+            actor=f"crm:user:{user.user_id}",
+        )
+        if not lead:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="lead not found")
+        return {
+            "status": "ok",
+            "lead_id": lead.id,
+            "review_status": lead.review_status,
+        }
+    except TenantOwnershipError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.get("/crm/deals")
+def crm_list_deals(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    sort_by: str = Query(default="created_at"),
+    sort_order: str = Query(default="desc"),
+    search: str | None = Query(default=None),
+    stage: str | None = Query(default=None),
+    review_status: str | None = Query(default=None),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Paginated deal list for CRM dashboard."""
+    user = _authorize(authorization, scopes=["crm.deals.read"])
+    try:
+        result = crm_service.get_deals(
+            tenant_id=user.tenant_id,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            search=search,
+            stage=stage,
+            review_status=review_status,
+        )
+        return {
+            "items": result.items,
+            "total": result.total,
+            "page": result.page,
+            "page_size": result.page_size,
+            "total_pages": result.total_pages,
+        }
+    except InvalidSortFieldError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except InvalidStatusError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/crm/deals/{deal_id}/override-stage")
+def crm_override_deal_stage(
+    deal_id: int,
+    payload: OverrideDealStageRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Override deal stage via CRM."""
+    user = _authorize(authorization, scopes=["crm.deals.write"])
+    try:
+        deal = crm_service.override_deal_stage_safe(
+            tenant_id=user.tenant_id,
+            deal_id=deal_id,
+            new_stage=payload.new_stage,
+            reason=payload.reason or "",
+            actor=f"crm:user:{user.user_id}",
+        )
+        if not deal:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="deal not found")
+        return {
+            "status": "ok",
+            "deal_id": deal.id,
+            "stage": deal.stage,
+            "last_updated": deal.last_updated.isoformat() if deal.last_updated else None,
+        }
+    except TenantOwnershipError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except InvalidStatusError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/crm/contracts")
+def crm_list_contracts(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    sort_by: str = Query(default="last_updated"),
+    sort_order: str = Query(default="desc"),
+    search: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    review_status: str | None = Query(default=None),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Paginated contract list for CRM dashboard."""
+    user = _authorize(authorization, scopes=["crm.contracts.read"])
+    try:
+        result = crm_service.get_contracts(
+            tenant_id=user.tenant_id,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            search=search,
+            status=status,
+            review_status=review_status,
+        )
+        return {
+            "items": result.items,
+            "total": result.total,
+            "page": result.page,
+            "page_size": result.page_size,
+            "total_pages": result.total_pages,
+        }
+    except InvalidSortFieldError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except InvalidStatusError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/crm/contracts/{contract_id}/sign")
+def crm_sign_contract(
+    contract_id: int,
+    payload: SignContractRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Mark a contract as signed via CRM."""
+    user = _authorize(authorization, scopes=["crm.contracts.write"])
+    try:
+        contract = crm_service.sign_contract_safe(
+            tenant_id=user.tenant_id,
+            contract_id=contract_id,
+            actor=f"crm:user:{user.user_id}",
+        )
+        if not contract:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="contract not found")
+        return {
+            "status": "ok",
+            "contract_id": contract.id,
+            "status_value": contract.status,
+            "signed_date": contract.signed_date.isoformat() if contract.signed_date else None,
+        }
+    except TenantOwnershipError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.get("/crm/invoices")
+def crm_list_invoices(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    sort_by: str = Query(default="due_date"),
+    sort_order: str = Query(default="desc"),
+    search: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    review_status: str | None = Query(default=None),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Paginated invoice list for CRM dashboard."""
+    user = _authorize(authorization, scopes=["crm.invoices.read"])
+    try:
+        result = crm_service.get_invoices(
+            tenant_id=user.tenant_id,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            search=search,
+            status=status,
+            review_status=review_status,
+        )
+        return {
+            "items": result.items,
+            "total": result.total,
+            "page": result.page,
+            "page_size": result.page_size,
+            "total_pages": result.total_pages,
+        }
+    except InvalidSortFieldError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except InvalidStatusError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/crm/invoices/{invoice_id}/mark-paid")
+def crm_mark_invoice_paid(
+    invoice_id: int,
+    payload: MarkInvoicePaidRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Mark an invoice as paid via CRM."""
+    user = _authorize(authorization, scopes=["crm.invoices.write"])
+    try:
+        invoice = crm_service.mark_invoice_paid_safe(
+            tenant_id=user.tenant_id,
+            invoice_id=invoice_id,
+            actor=f"crm:user:{user.user_id}",
+        )
+        if not invoice:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invoice not found")
+        return {
+            "status": "ok",
+            "invoice_id": invoice.id,
+            "status_value": invoice.status,
+            "payment_date": invoice.payment_date.isoformat() if invoice.payment_date else None,
+        }
+    except TenantOwnershipError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))

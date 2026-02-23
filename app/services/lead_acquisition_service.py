@@ -156,30 +156,74 @@ class LeadAcquisitionService:
         return collected[:limit]
 
     def acquire_and_persist(self, tenant_id: int = 1) -> dict[str, int]:
+        """Acquire leads from public sources and persist to database.
+
+        This method implements idempotent lead insertion by checking for
+        existing emails before inserting. Duplicate leads are skipped and
+        logged for observability.
+
+        Args:
+            tenant_id: Tenant ID for the leads
+
+        Returns:
+            Dict with 'created', 'skipped', 'daily_cap', and 'skipped_duplicates' counts
+        """
         try:
             current_count = self._current_day_count(tenant_id)
             remaining = max(0, self.daily_cap - current_count)
             if remaining <= 0:
-                return {"created": 0, "skipped": 0, "daily_cap": self.daily_cap}
+                logger.info(
+                    "lead_acquisition.daily_cap_reached",
+                    extra={
+                        "event": "lead_acquisition.daily_cap_reached",
+                        "tenant_id": tenant_id,
+                        "current_count": current_count,
+                        "daily_cap": self.daily_cap,
+                    },
+                )
+                return {"created": 0, "skipped": 0, "daily_cap": self.daily_cap, "skipped_duplicates": 0}
 
             scraped = self.scrape_public_leads(limit=remaining)
             created = 0
             skipped = 0
+            skipped_duplicates = 0
+            skipped_invalid = 0
+
             with get_db_session() as session:
                 for lead in scraped:
                     if not _validate(lead):
                         skipped += 1
+                        skipped_invalid += 1
+                        logger.debug(
+                            "lead_acquisition.lead_invalid",
+                            extra={
+                                "event": "lead_acquisition.lead_invalid",
+                                "email": lead.email,
+                                "company": lead.company,
+                            },
+                        )
                         continue
-                    exists = session.query(Lead).filter(Lead.email == sanitize_text(lead.email, 320)).first()
+
+                    normalized_email = sanitize_text(lead.email, 320)
+                    exists = session.query(Lead).filter(Lead.email == normalized_email).first()
                     if exists:
                         skipped += 1
+                        skipped_duplicates += 1
+                        logger.debug(
+                            "lead_acquisition.duplicate_skipped",
+                            extra={
+                                "event": "lead_acquisition.duplicate_skipped",
+                                "email": normalized_email,
+                                "existing_lead_id": exists.id,
+                            },
+                        )
                         continue
 
                     session.add(
                         Lead(
                             tenant_id=tenant_id,
                             name=sanitize_text(lead.name, 255),
-                            email=sanitize_text(lead.email, 320),
+                            email=normalized_email,
                             company=sanitize_text(lead.company, 255),
                             website=_normalize_website(sanitize_text(lead.website, 255)),
                             industry=sanitize_text(lead.industry, 120),
@@ -190,13 +234,35 @@ class LeadAcquisitionService:
                         )
                     )
                     created += 1
+                    logger.debug(
+                        "lead_acquisition.lead_created",
+                        extra={
+                            "event": "lead_acquisition.lead_created",
+                            "email": normalized_email,
+                            "company": lead.company,
+                        },
+                    )
                 session.commit()
 
             logger.info(
                 "lead_acquisition.completed",
-                extra={"event": "lead_acquisition.completed", "created": created, "skipped": skipped, "daily_cap": self.daily_cap},
+                extra={
+                    "event": "lead_acquisition.completed",
+                    "leads_created": created,
+                    "leads_skipped": skipped,
+                    "leads_skipped_duplicates": skipped_duplicates,
+                    "leads_skipped_invalid": skipped_invalid,
+                    "daily_cap": self.daily_cap,
+                    "tenant_id": tenant_id,
+                },
             )
-            return {"created": created, "skipped": skipped, "daily_cap": self.daily_cap}
+            return {
+                "created": created,
+                "skipped": skipped,
+                "daily_cap": self.daily_cap,
+                "skipped_duplicates": skipped_duplicates,
+                "skipped_invalid": skipped_invalid,
+            }
         except SQLAlchemyError:
             logger.exception("lead_acquisition.persist_failed", extra={"event": "lead_acquisition.persist_failed"})
-            return {"created": 0, "skipped": 0, "daily_cap": self.daily_cap}
+            return {"created": 0, "skipped": 0, "daily_cap": self.daily_cap, "skipped_duplicates": 0}
