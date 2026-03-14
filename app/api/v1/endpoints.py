@@ -12,6 +12,7 @@ from app.database.db import get_db_session
 from app.database.models import AgentRun, Deal, EmailLog, Lead
 from app.orchestrator import RevoOrchestrator
 from app.services.lead_acquisition_service import LeadAcquisitionService
+from app.services.opportunity_scoring_service import OpportunityScoringService
 from app.services.sales_intelligence_service import PIPELINE_STAGES, SalesIntelligenceService
 from app.tasks.agent_tasks import execute_agent_task, run_pipeline_task
 
@@ -452,6 +453,7 @@ def get_probability_breakdown(authorization: str | None = Header(default=None, a
     bucket_counts = {"0-24": 0, "25-49": 0, "50-74": 0, "75-100": 0}
     probabilities: list[float] = []
     confidences: list[int] = []
+    bant_scores: list[int] = []
     factor_totals: dict[str, float] = defaultdict(float)
     factor_counts: dict[str, int] = defaultdict(int)
 
@@ -470,13 +472,21 @@ def get_probability_breakdown(authorization: str | None = Header(default=None, a
         else:
             bucket_counts["75-100"] += 1
 
-        if isinstance(deal.probability_breakdown, dict):
-            for key, value in deal.probability_breakdown.items():
+        breakdown = deal.probability_breakdown if isinstance(deal.probability_breakdown, dict) else {}
+        numeric_factors = breakdown.get("factor_scores") if isinstance(breakdown.get("factor_scores"), dict) else breakdown
+        if isinstance(numeric_factors, dict):
+            for key, value in numeric_factors.items():
                 try:
                     factor_totals[key] += float(value)
                     factor_counts[key] += 1
                 except (TypeError, ValueError):
                     continue
+
+        bant_score = OpportunityScoringService.calculate_bant_score(breakdown)
+        if bant_score == 0 and isinstance(breakdown.get("bant_score"), (int, float)):
+            bant_score = int(round(float(breakdown.get("bant_score"))))
+        if bant_score > 0:
+            bant_scores.append(bant_score)
 
     factor_averages = {
         key: round((factor_totals[key] / factor_counts[key]), 2)
@@ -485,25 +495,33 @@ def get_probability_breakdown(authorization: str | None = Header(default=None, a
     }
     avg_probability = round(mean(probabilities), 2) if probabilities else 0.0
     avg_confidence = round(mean(confidences), 2) if confidences else 0.0
+    avg_bant_score = round(mean(bant_scores), 2) if bant_scores else 0.0
 
-    deals_payload = [
-        {
-            "deal_id": deal.id,
-            "company": deal.company,
-            "stage": deal.stage,
-            "probability": _safe_float(deal.probability),
-            "probability_confidence": _safe_int(deal.probability_confidence),
-            "probability_breakdown": deal.probability_breakdown or {},
-            "probability_explanation": deal.probability_explanation,
-        }
-        for deal in deals
-    ]
+    deals_payload = []
+    for deal in deals:
+        breakdown = deal.probability_breakdown or {}
+        bant_score = OpportunityScoringService.calculate_bant_score(breakdown)
+        if bant_score == 0 and isinstance(breakdown, dict) and isinstance(breakdown.get("bant_score"), (int, float)):
+            bant_score = int(round(float(breakdown.get("bant_score"))))
+        deals_payload.append(
+            {
+                "deal_id": deal.id,
+                "company": deal.company,
+                "stage": deal.stage,
+                "probability": _safe_float(deal.probability),
+                "probability_confidence": _safe_int(deal.probability_confidence),
+                "bant_score": bant_score,
+                "probability_breakdown": breakdown,
+                "probability_explanation": deal.probability_explanation,
+            }
+        )
 
     return {
         "tenant_id": user.tenant_id,
         "summary": {
             "average_probability": avg_probability,
             "average_confidence": avg_confidence,
+            "average_bant_score": avg_bant_score,
             "bucket_counts": bucket_counts,
         },
         "factor_averages": factor_averages,

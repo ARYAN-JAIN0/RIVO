@@ -33,6 +33,7 @@ from app.database.db_handler import (
     mark_dunning_decision
 )
 from app.core.logging_config import configure_logging
+from app.services.opportunity_scoring_service import OpportunityScoringService
 
 from app.utils.validators import sanitize_text
 from app.utils.orm import orm_to_df
@@ -127,7 +128,6 @@ with tab1:
             for idx, row in pending_sdr.iterrows():
                 with st.container():
                     col1, col2 = st.columns([3, 1])
-                    
                     with col1:
                         # Safe field access
                         row_id = int(row.get("id", 0) or 0)
@@ -208,6 +208,14 @@ with tab2:
             for idx, deal in pending_deals.iterrows():
                 with st.container():
                     col1, col2 = st.columns([3, 1])
+                    breakdown = deal.get('probability_breakdown', {}) or {}
+                    bant_score = 0
+                    if isinstance(breakdown, dict):
+                        bant_score = OpportunityScoringService.calculate_bant_score(breakdown)
+                        if bant_score == 0 and isinstance(breakdown.get("bant_score"), (int, float)):
+                            bant_score = int(round(float(breakdown.get("bant_score"))))
+                    if bant_score == 0:
+                        bant_score = int(deal.get('qualification_score', 0) or 0)
                     
                     with col1:
                         deal_id = deal.get('deal_id', 'Unknown')
@@ -216,7 +224,7 @@ with tab2:
                         st.subheader(f"Deal #{deal_id} - {company} (Lead #{lead_id})")
                     
                     with col2:
-                        score = deal.get('qualification_score', 0) or 0
+                        score = bant_score
                         if score >= 85:
                             st.success(f"🟢 Score: {score}/100")
                         elif score >= 70:
@@ -232,7 +240,7 @@ with tab2:
                         acv = deal.get('acv', 0) or 0
                         st.metric("Deal Value", f"${acv:,}")
                     with col_c:
-                        st.metric("BANT Score", f"{score}/100")
+                        st.metric("BANT Score", f"{bant_score}/100")
                     
                     # AI Qualification Analysis - show probability explanation
                     probability_explanation = deal.get('probability_explanation', '') or ''

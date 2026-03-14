@@ -145,6 +145,10 @@ def test_sales_create_update_and_forecast_fields(monkeypatch):
     fetched = s.query(Deal).filter(Deal.id == deal.id).first()
     assert fetched is not None
     assert fetched.forecast_month is not None
+    assert isinstance(fetched.probability_breakdown, dict)
+    assert "factor_scores" in fetched.probability_breakdown
+    assert "bant_score" in fetched.probability_breakdown
+    assert fetched.probability_breakdown["bant_score"] > 0
     s.close()
 
 

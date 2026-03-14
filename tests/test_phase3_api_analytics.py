@@ -131,10 +131,17 @@ def test_phase3_analytics_and_deal_routes(monkeypatch):
     probability = client.get("/api/v1/analytics/probability-breakdown", headers=headers)
     assert probability.status_code == 200
     assert probability.json()["summary"]["average_probability"] > 0
+    assert "average_bant_score" in probability.json()["summary"]
 
     rescore = client.post(f"/api/v1/sales/deals/{deal_id}/rescore", headers=headers)
     assert rescore.status_code == 200
     assert rescore.json()["probability"] is not None
+
+    probability_after = client.get("/api/v1/analytics/probability-breakdown", headers=headers)
+    assert probability_after.status_code == 200
+    matching = [d for d in probability_after.json()["deals"] if d["deal_id"] == deal_id]
+    assert matching
+    assert matching[0]["bant_score"] > 0
 
     override = client.post(
         f"/api/v1/sales/deals/{deal_id}/manual-override",

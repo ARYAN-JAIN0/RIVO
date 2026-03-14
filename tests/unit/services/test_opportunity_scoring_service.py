@@ -225,6 +225,27 @@ class TestGenerateExplanation:
         need_positive = any("pain points" in f for f in explanation.positive_factors)
         assert need_positive
 
+    def test_need_clarity_negative_factor(self, service):
+        """Test low need clarity creates negative factor."""
+        breakdown = {
+            "budget_signal": 10,
+            "authority_level": 10,
+            "need_clarity": 10,  # No strong need signals
+            "timeline_urgency": 8,
+            "email_engagement": 10,
+            "followup_responsiveness": 15,
+        }
+
+        explanation = service._generate_explanation(
+            breakdown=breakdown,
+            final_probability=50.0,
+            margin=0.35,
+            segment="SMB"
+        )
+
+        need_negative = any("Unclear need" in f for f in explanation.negative_factors)
+        assert need_negative
+
     def test_timeline_urgency_positive_factor(self, service):
         """Test high timeline urgency creates positive factor."""
         breakdown = {
@@ -543,3 +564,55 @@ class TestConfidenceLevels:
         )
         
         assert explanation.confidence == "Low"
+
+
+class TestBantScoreHelpers:
+    """Tests for BANT factor extraction and scoring helpers."""
+
+    def test_extract_bant_factors_from_legacy_breakdown(self):
+        breakdown = {
+            "budget_signal": 20,
+            "authority_level": 10,
+            "need_clarity": 20,
+            "timeline_urgency": 8,
+            "email_engagement": 12,
+        }
+
+        result = OpportunityScoringService.extract_bant_factors(breakdown)
+        assert result == {
+            "budget_signal": 20,
+            "authority_level": 10,
+            "need_clarity": 20,
+            "timeline_urgency": 8,
+        }
+
+    def test_extract_bant_factors_from_structured_breakdown(self):
+        breakdown = {
+            "positive_factors": ["Budget signals detected"],
+            "factor_scores": {
+                "budget_signal": 20,
+                "authority_level": 20,
+                "need_clarity": 10,
+                "timeline_urgency": 8,
+                "email_engagement": 16,
+            },
+        }
+
+        result = OpportunityScoringService.extract_bant_factors(breakdown)
+        assert result == {
+            "budget_signal": 20,
+            "authority_level": 20,
+            "need_clarity": 10,
+            "timeline_urgency": 8,
+        }
+
+    def test_calculate_bant_score(self):
+        breakdown = {
+            "budget_signal": 20,
+            "authority_level": 20,
+            "need_clarity": 10,
+            "timeline_urgency": 10,
+        }
+
+        # (20 + 20 + 10 + 10) / 80 * 100 = 75
+        assert OpportunityScoringService.calculate_bant_score(breakdown) == 75

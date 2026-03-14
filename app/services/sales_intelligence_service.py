@@ -127,11 +127,14 @@ class SalesIntelligenceService:
             deal.qualification_score = int(score.rule_score)
             deal.probability = score.final_probability
             deal.probability_confidence = score.confidence
-            # Store structured explanation if available, otherwise fall back to breakdown
+            # Store structured explanation plus canonical factor scores for BANT analytics.
             if score.deal_explanation:
-                deal.probability_breakdown = OpportunityScoringService.deal_explanation_to_dict(score.deal_explanation)
+                probability_breakdown = OpportunityScoringService.deal_explanation_to_dict(score.deal_explanation)
+                probability_breakdown["factor_scores"] = dict(score.breakdown)
             else:
-                deal.probability_breakdown = score.breakdown
+                probability_breakdown = dict(score.breakdown)
+            probability_breakdown["bant_score"] = OpportunityScoringService.calculate_bant_score(score.breakdown)
+            deal.probability_breakdown = probability_breakdown
             deal.probability_explanation = score.explanation
             deal.expected_close_date = date.today() + timedelta(days=close_days)
             deal.cost_estimate = int(deal_value * 0.65)

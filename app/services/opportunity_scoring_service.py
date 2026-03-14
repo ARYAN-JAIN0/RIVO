@@ -47,7 +47,7 @@ class OpportunityScoringService:
     AUTHORITY_HIGH_THRESHOLD = 15
     AUTHORITY_LOW_THRESHOLD = 15
     NEED_HIGH_THRESHOLD = 15
-    NEED_LOW_THRESHOLD = 10
+    NEED_LOW_THRESHOLD = 15
     TIMELINE_HIGH_THRESHOLD = 15
     TIMELINE_LOW_THRESHOLD = 10
     ENGAGEMENT_HIGH_THRESHOLD = 15
@@ -61,6 +61,7 @@ class OpportunityScoringService:
     
     # Margin threshold
     LOW_MARGIN_THRESHOLD = 0.20
+    BANT_FACTOR_KEYS = ("budget_signal", "authority_level", "need_clarity", "timeline_urgency")
 
     @staticmethod
     def _rule_score(lead, email_log_count: int = 0) -> tuple[int, dict[str, int]]:
@@ -84,6 +85,42 @@ class OpportunityScoringService:
         }
         total = min(100, int(round(sum(factors.values()) / 1.2)))
         return total, factors
+
+    @classmethod
+    def _bounded_factor_value(cls, value: object) -> int:
+        """Normalize a factor value to the expected 0-20 range."""
+        try:
+            parsed = int(round(float(value)))
+        except (TypeError, ValueError):
+            return 0
+        return max(0, min(parsed, 20))
+
+    @classmethod
+    def extract_bant_factors(cls, breakdown: object) -> dict[str, int]:
+        """Extract canonical BANT factor scores from legacy or structured payloads."""
+        if not isinstance(breakdown, dict):
+            return {}
+
+        # New structured payload stores raw scores under "factor_scores".
+        source = breakdown.get("factor_scores") if isinstance(breakdown.get("factor_scores"), dict) else breakdown
+        if not isinstance(source, dict):
+            return {}
+
+        factors: dict[str, int] = {}
+        for key in cls.BANT_FACTOR_KEYS:
+            if key not in source:
+                return {}
+            factors[key] = cls._bounded_factor_value(source.get(key))
+        return factors
+
+    @classmethod
+    def calculate_bant_score(cls, breakdown: object) -> int:
+        """Calculate a pure BANT score (0-100) from factor scores."""
+        factors = cls.extract_bant_factors(breakdown)
+        if not factors:
+            return 0
+        total = sum(factors.get(key, 0) for key in cls.BANT_FACTOR_KEYS)  # max 80
+        return int(round((total / 80.0) * 100))
 
     @staticmethod
     def _llm_score(lead, transcript: str = "") -> tuple[int, str]:
