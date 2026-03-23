@@ -166,6 +166,29 @@ class NegotiationMemory(Base):
     tenant = relationship("Tenant")
 
 
+class NegotiationMessage(Base):
+    """Individual messages in a negotiation conversation.
+    
+    Stores messages for stateful multi-turn negotiation tracking.
+    """
+    __tablename__ = "negotiation_messages"
+    __table_args__ = (
+        Index("idx_negotiation_messages_deal_timestamp", "deal_id", "timestamp"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
+    role = Column(String, nullable=False)  # user, agent, system
+    message_text = Column(Text, nullable=False)
+    message_type = Column(String, nullable=False)  # objection, response, offer, system
+    detected_intent = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    deal = relationship("Deal")
+    tenant = relationship("Tenant")
+
+
 class Contract(Base):
     __tablename__ = "contracts"
     __table_args__ = (
@@ -331,3 +354,27 @@ class LLMLog(Base):
     confidence_score = Column(Integer)
     validation_status = Column(String, default="passed")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class RagDocumentChunk(Base):
+    """RAG document chunks for semantic search.
+    
+    Stores text chunks from uploaded documents with their embeddings
+    for retrieval-augmented generation.
+    """
+    __tablename__ = "rag_document_chunks"
+    __table_args__ = (
+        Index("idx_rag_chunks_tenant_created", "tenant_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1, index=True)
+    content = Column(Text, nullable=False)
+    embedding = Column(Text, nullable=False)  # JSON-serialized list for cross-compatibility
+    source_filename = Column(String(500))
+    source_type = Column(String(50))  # pdf, txt, md
+    chunk_index = Column(Integer)
+    metadata_json = Column(Text)  # JSON-serialized dict
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    tenant = relationship("Tenant")

@@ -1,46 +1,30 @@
-# Debug Mode Rules
+# Debug Mode Rules (Non-Obvious Only)
 
-## LLM Issues
-- LLM client connects to Ollama (check `OLLAMA_GENERATE_URL` env var, default: `http://localhost:11434/api/generate`)
-- Check `OLLAMA_MODEL` env var (default: `qwen2.5:7b` in [`app/core/config.py`](app/core/config.py))
-- Client has built-in retry with fast-fail for local connection errors
-- Returns empty string on failure - check logs for "llm.call.unavailable" events
-- Rate limiting enforced via `LLM_MIN_INTERVAL_SECONDS` (default: 0.25s)
+## Database Debugging
+- `DB_CONNECTIVITY_REQUIRED` defaults to `True` in production, `False` otherwise — not a simple false
+- SQLite fallback activates silently when PostgreSQL unavailable and `DB_CONNECTIVITY_REQUIRED=false`
+- SQLite ignores pool parameters (`pool_size`, `pool_recycle`, etc.) — connection behavior differs from PostgreSQL
+- `get_db_session()` never auto-commits — if data isn't persisting, check for missing `session.commit()`
+- Alembic resolves `DATABASE_URL` at import time via `get_config()` — env vars must be set BEFORE running alembic
 
-## Database Connection Issues
-- Check `DATABASE_URL` in `.env` (PostgreSQL or SQLite fallback)
-- When `DB_CONNECTIVITY_REQUIRED=false` (default in development), system auto-falls back to SQLite
-- Session management uses context manager pattern via `get_db_session()`
-- Enable `DEBUG=true` in `.env` to see SQL query logging
-- Check [`_fallback_to_sqlite_if_optional()`](app/database/db.py:103) for fallback behavior
+## Test Debugging
+- Test isolation fixture ONLY patches `db_handler.get_db_session` — services using `BaseService(db=None)` or importing `get_db_session` directly from `app.database.db` will hit the real database
+- `.test_tmp/` accumulates SQLite files with no automatic cleanup
+- CI runs 3 separate pytest invocations (unit, integration, phase2) — failures in one group don't block others
+- `get_config("test")` returns a separate cached instance from `get_config()` (no cache clearing mechanism)
 
-## Email Validation Failures
-Emails fail [`validate_structure()`](app/utils/validators.py:39) if:
-- Missing greeting prefix ("hi ", "hello ", "dear ")
-- Missing sign-off ("best,", "regards,", etc.) or email address at end
-- Less than 30 words
-- Contains forbidden tokens like "[your name]", "{company}", "[payment link]"
-
-## Test Database
-Tests use isolated SQLite databases in `.test_tmp/` directory via `isolated_session_factory` fixture in [`tests/conftest.py`](tests/conftest.py).
+## Auth Debugging
+- `get_current_user(token=None)` silently returns admin context — unauthenticated paths run as admin
+- JWT is hand-rolled (`app/auth/jwt.py`) using hmac+hashlib — no PyJWT library errors to look for
+- Password verification has SHA-256 legacy fallback for pre-bcrypt records (pepper format: `{pepper}:{password}`)
 
 ## Logging
-- Logs written to `rivo.log` (configurable via `LOG_FILE`)
-- Log level via `LOG_LEVEL` env var (default: INFO)
-- Structured logging with "event" field for filtering (e.g., "orchestrator.agent.failure")
+- Two logging modules: `app/core/logging_config.py` (setup with JsonFormatter) and `app/core/logging.py` (LogContext helpers)
+- Structured logs use `extra={"event": "dotted.event.name"}` — filter on the `event` key
+- Middleware order is LIFO: CorrelationID runs before RateLimit despite being added after
 
-## Celery Task Issues
-- When Celery is not installed, mock implementation runs tasks synchronously
-- Set `CELERY_TASK_ALWAYS_EAGER=true` for local synchronous execution
-- Check `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` (default: redis://localhost:6379/0)
-
-## SDR Agent Not Processing Leads
-Check [`check_negative_gate()`](app/agents/sdr_agent.py:45) which rejects:
-- Leads with "layoff" or "competitor" in negative_signals
-- Forbidden sectors: government, academic, education, non-profit, ngo
-- Leads contacted within 30 days
-
-## Review Queue Issues
-- [`save_draft()`](app/database/db_handler.py:94) does NOT advance lead status
-- Only [`mark_review_decision()`](app/database/db_handler.py) can move leads to Contacted
-- Check `REVIEW_QUEUE_THRESHOLD` (85) and `SIGNAL_THRESHOLD` (60) in [`app/agents/sdr_agent.py`](app/agents/sdr_agent.py)
+## Common Silent Failures
+- Importing models from `app.models` instead of `app.database.models` — queries return empty, no error
+- Importing enums from `app.models.enums` instead of `app.core.enums` — comparisons fail silently
+- `call_llm()` returns `""` on failure, not None — `if response` works, `if response is not None` doesn't catch failures
+- Docker uses postgres:14, CI uses postgres:16 — migration edge cases possible

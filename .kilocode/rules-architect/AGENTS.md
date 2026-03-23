@@ -1,77 +1,28 @@
-# Architect Mode Rules
+# Architect Mode Rules (Non-Obvious Only)
 
-## System Architecture
+## Dual System Warning
+- Two ORM model systems with DIFFERENT Base classes: `app/database/models.py` (active, Alembic-managed) vs `app/models/` (planned refactor, disconnected). Any migration or schema work must target `app/database/models.py` only.
+- Two enum systems: `app/core/enums.py` (active, plain Enum) vs `app/models/enums.py` (inactive, str+Enum with extra values like `Void`, `RunStatus`, `UserRole`). Consolidation needed.
 
-```mermaid
-flowchart LR
-    SDR[SDR Agent] --> Sales[Sales Agent]
-    Sales --> Negotiation[Negotiation Agent]
-    Negotiation --> Finance[Finance Agent]
-```
+## Hidden Coupling
+- `isolated_session_factory` test fixture only patches `db_handler.get_db_session` — any new service that imports `get_db_session` directly from `app.database.db` will bypass test isolation
+- `FORBIDDEN_TOKENS` (validators.py, 8 items) vs `FORBIDDEN_PLACEHOLDER_TOKENS` (schemas.py, 5 items) — validation inconsistency between structural check and Pydantic schema
+- `app/api/_compat.py` mock layer means API modules can't use FastAPI features not covered by the mock
+- Eight files have `sys.path.insert(0, PROJECT_ROOT)` — prevents clean package refactoring
 
-## Core Components
+## Architectural Constraints
+- Config is frozen dataclass with `@lru_cache(maxsize=8)` — no runtime config changes, no cache invalidation
+- `get_db_session()` does NOT auto-commit — all write paths must explicitly commit
+- Auth bypass: `get_current_user(token=None)` returns admin — script-mode execution has full permissions
+- Middleware LIFO order: CorrelationID must be added AFTER RateLimit to execute first
+- Alembic resolves DATABASE_URL at import time — cannot dynamically switch databases
 
-### Agent Pipeline
-[`RevoOrchestrator`](app/orchestrator.py:34) coordinates sequential agent execution. Each agent processes entities by status and advances them through the pipeline.
+## Database
+- docker-compose: postgres:14, CI: postgres:16 — migrations must be compatible with both
+- SQLite fallback in non-production silently ignores pool parameters
+- `alembic_version` table may be missing on pre-migration databases — `init_db.py` handles baseline stamping to `20260213_0001`
+- All unique constraints are tenant-scoped (e.g., `uq_leads_tenant_email`)
 
-### Database Layer
-- **Models**: [`app/database/models.py`](app/database/models.py) - SQLAlchemy declarative models
-- **Session Management**: Context manager pattern via `get_db_session()` in [`app/database/db.py`](app/database/db.py)
-- **Data Access**: Functions in [`app/database/db_handler.py`](app/database/db_handler.py)
-
-### LLM Integration
-- **Client**: [`call_llm()`](app/services/llm_client.py:29) wraps Ollama API
-- **Wrapper**: [`LLMClient`](app/llm/client.py:32) provides structured request/response with latency tracking
-- **Prompts**: Templates in [`app/llm/prompt_templates/defaults.py`](app/llm/prompt_templates/defaults.py)
-
-### API Layer
-- **FastAPI app**: [`app/main.py`](app/main.py) creates ASGI application
-- **Routes**: [`app/api/v1/endpoints.py`](app/api/v1/endpoints.py) for REST endpoints
-- **Auth**: JWT-based with RBAC in [`app/auth/`](app/auth/)
-
-### Task Queue
-- **Celery**: [`app/tasks/celery_app.py`](app/tasks/celery_app.py) - has mock fallback when Celery not installed
-- **Tasks**: [`app/tasks/agent_tasks.py`](app/tasks/agent_tasks.py) for async agent execution
-
-## Entity Lifecycle
-
-| Entity | Status Flow |
-|--------|-------------|
-| Lead | New → Contacted → Qualified/Disqualified |
-| Deal | Qualified → Proposal Sent → Won/Lost |
-| Contract | Negotiating → Signed → Completed/Cancelled |
-| Invoice | Sent → Paid/Overdue |
-
-## Key Architectural Constraints
-
-### Status Enums Use Title Case
-All status enums in [`app/core/enums.py`](app/core/enums.py) use title case values (e.g., `"New"`, `"Contacted"`, `"Qualified"`), NOT lowercase. This matches database values and UI usage.
-
-### Review Gate Semantics
-[`save_draft()`](app/database/db_handler.py:94) does NOT modify lead progression status. Only [`mark_review_decision()`](app/database/db_handler.py) can move leads to Contacted status. This enforces human-in-the-loop for email approvals.
-
-### Database Fallback Behavior
-When `DB_CONNECTIVITY_REQUIRED=false` (default in development), the system automatically falls back to SQLite if PostgreSQL is unavailable. See [`_fallback_to_sqlite_if_optional()`](app/database/db.py:103).
-
-### Tenant Isolation
-All entities have `tenant_id` with default=1. Unique constraints are tenant-scoped (e.g., `uq_leads_tenant_email`). See [`app/database/models.py`](app/database/models.py).
-
-### LLM Failure Handling
-[`call_llm()`](app/services/llm_client.py:29) returns empty string `""` on failure. All callers must handle this with fallback logic. Local Ollama connection errors fail-fast without retries.
-
-### Celery Fallback Mode
-When Celery is not installed, a mock implementation in [`app/tasks/celery_app.py`](app/tasks/celery_app.py) runs tasks synchronously. Set `CELERY_TASK_ALWAYS_EAGER=true` for local synchronous execution.
-
-### SDR Negative Gate
-[`check_negative_gate()`](app/agents/sdr_agent.py:45) filters leads before processing:
-- Rejects leads with "layoff" or "competitor" in negative_signals
-- Blocks forbidden sectors: government, academic, education, non-profit, ngo
-- Skips leads contacted within 30 days
-
-### SDR Signal Scoring
-[`calculate_signal_score()`](app/agents/sdr_agent.py:75) scores leads:
-- Growth signals (hiring/growing/expanding): +30
-- Tech change signals (tech/install/stack/migration): +25
-- Decision maker role (cto/ceo/vp/head/director/founder/ciso): +20
-- ICP fit (1000/500/enterprise/mid-market company size): +15
-- Urgency (budget/q4/immediate): +10
+## No Code Quality Tooling
+- No ruff, pylint, mypy, black, or isort configured — only `python -m compileall` syntax check in CI
+- RBAC uses 5 roles with `domain.resource.action` scope strings; admin gets wildcard `*`

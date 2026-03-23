@@ -1,0 +1,9 @@
+{
+	"servers": {
+		"MiniMax API Docs": {
+			"url": "https://platform.minimax.io/docs/mcp",
+			"type": "http"
+		}
+	},
+	"inputs": []
+}

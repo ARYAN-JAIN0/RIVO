@@ -1,167 +1,97 @@
-﻿# MODULE DEEP DIVE
+# MODULE DEEP DIVE
 
-## Simple Explanation
-RIVO is split into modules where each module has one clear job:
-- Acquire leads
-- Work leads through SDR, Sales, Negotiation, Finance
-- Persist and transition state safely
-- Run automatically (scheduler/tasks) or manually (API)
+## 7. Core Modules & Responsibilities
 
-## Technical Explanation
+### Lead Acquisition Modules
+`app/services/lead_acquisition_service.py`
+Purpose: public-source lead ingestion with minimal setup.
+Key flow: count daily cap, scrape, validate/normalize, persist deduplicated leads.
 
-## 1) Lead Acquisition Modules
+`app/services/lead_scraper_service.py`
+Purpose: production-oriented lead scraping and validation.
+Key flow: resolve sources, rate-limit fetches, schema validation, persistence with duplication safeguards.
 
-### `app/services/lead_acquisition_service.py`
-- Problem solved: quick public-source lead ingestion with minimal setup.
-- Internal flow:
-  1. Count tenant daily lead volume (`_current_day_count()` at `app/services/lead_acquisition_service.py:117`)
-  2. Scrape public pages (`scrape_public_leads()` at `app/services/lead_acquisition_service.py:127`)
-  3. Validate/normalize and persist deduplicated leads (`acquire_and_persist()` at `app/services/lead_acquisition_service.py:158`)
-- Key functions/classes:
-  - `ScrapedLead` dataclass (`app/services/lead_acquisition_service.py:37`)
-  - `LeadAcquisitionService` (`app/services/lead_acquisition_service.py:105`)
-- Dependencies:
-  - `get_db_session`, `Lead` model, `sanitize_text`, enums.
-- Interactions:
-  - API endpoint `POST /lead-acquisition` (`app/api/v1/endpoints.py:65`).
+### SDR Module
+`app/agents/sdr_agent.py`
+Purpose: evaluate new leads and produce outreach drafts.
+Key flow: negative gate, signal scoring, LLM generation with fallback, structure validation, draft save.
 
-### `app/services/lead_scraper_service.py`
-- Problem solved: stricter, production-oriented lead scraping/validation for scheduler flows.
-- Internal flow:
-  1. Resolve enabled sources and rate-limit fetches (`_fetch_from_source()` at `app/services/lead_scraper_service.py:344`)
-  2. Validate via `ScrapedLeadSchema` (`_validate_lead()` at `app/services/lead_scraper_service.py:523`)
-  3. Persist with duplicate safety (`_persist_leads()` at `app/services/lead_scraper_service.py:638`)
-- Key classes:
-  - `LeadScraperService` (`app/services/lead_scraper_service.py:181`)
-  - `RateLimiter` (`app/services/lead_scraper_service.py:83`)
-  - `ScraperMetrics` (`app/services/lead_scraper_service.py:130`)
-- Interactions:
-  - scheduler uses `acquire_and_persist()` (`app/tasks/scheduler.py:248` logic path).
+### Sales Module
+`app/agents/sales_agent.py`
+Purpose: convert contacted leads into scored deals.
+Key flow: create/update deals, apply scoring, optional RAG retrieval, stage transition to proposal.
 
-## 2) SDR Module
+`app/services/sales_intelligence_service.py`
+Purpose: centralized sales math and stage transition policy.
+Key functions: `create_or_update_deal()`, `transition_stage()`, `calculate_margin()`.
 
-### `app/agents/sdr_agent.py`
-- Problem solved: evaluate new leads and produce outreach drafts with validation.
-- Internal flow:
-  1. Load `Lead.status == New` via `fetch_leads_by_status()`
-  2. Run negative gate (`check_negative_gate()` at `app/agents/sdr_agent.py:45`)
-  3. Score signals (`calculate_signal_score()` at `app/agents/sdr_agent.py:75`)
-  4. Generate body (`generate_email_body()` at `app/agents/sdr_agent.py:138`)
-  5. Inject signature and validate structure (`inject_signature()` at `app/agents/sdr_agent.py:166`)
-  6. Save draft / auto-send branch (`run_sdr_agent()` at `app/agents/sdr_agent.py:215`)
-- Dependencies:
-  - LLM client, validators, db_handler, EmailService.
-- Important behavior:
-  - low-signal and blocked leads are disqualified.
-  - stage changes rely on review decisions in persistence layer.
+### Negotiation Module
+`app/agents/negotiation_agent.py`
+Purpose: objection-response strategy generation and negotiation turn control.
+Key flow: select proposal-sent deals, create/get contracts, classify objections, generate strategy, persist draft for review.
 
-## 3) Sales Module
+### Finance Module
+`app/agents/finance_agent.py`
+Purpose: invoice issuance and dunning sequence generation.
+Key flow: find signed contracts, create invoices idempotently, compute overdue stage, generate dunning, persist drafts.
 
-### `app/agents/sales_agent.py`
-- Problem solved: convert contacted leads into scored deals and advance stage when qualified.
-- Internal flow:
-  1. Query contacted leads (`run_sales_agent()` at `app/agents/sales_agent.py:21`)
-  2. Create/update deal via `SalesIntelligenceService`
-  3. Retrieve RAG context (`RAGService.retrieve()`)
-  4. If probability threshold met, transition to `Proposal Sent` and generate proposal.
+### Database Access Modules
+`app/database/db.py`
+Purpose: engine/session management with optional SQLite fallback.
+Key functions: `_build_engine()`, `get_db_session()`, `verify_database_connection()`.
 
-### `app/services/sales_intelligence_service.py`
-- Problem solved: centralized sales math + stage transition policy.
-- Key functions:
-  - `create_or_update_deal()` (`app/services/sales_intelligence_service.py:70`)
-  - `transition_stage()` (`app/services/sales_intelligence_service.py:160`)
-  - `calculate_margin()` (`app/services/sales_intelligence_service.py:42`)
-- Dependencies:
-  - `OpportunityScoringService`, `RAGService`, `ProposalService`, ORM models.
+`app/database/db_handler.py`
+Purpose: explicit state transition and review workflow mutations.
+Key functions: `save_draft()`, `mark_review_decision()`, `mark_contract_decision()`, `mark_dunning_decision()`.
 
-## 4) Negotiation Module
+`app/database/models.py`
+Purpose: ORM definitions for leads, deals, contracts, invoices, logs, tenants/users.
 
-### `app/agents/negotiation_agent.py`
-- Problem solved: objection-response strategy generation and negotiation turn control.
-- Internal flow:
-  1. Select `Proposal Sent` deals (`run_negotiation_agent()` at `app/agents/negotiation_agent.py:218`)
-  2. Create/get contract (`create_contract()` in db_handler)
-  3. Enforce max turns (`_is_max_turns_reached()` at `app/agents/negotiation_agent.py:205`)
-  4. Classify objections (`classify_objections()` at `app/agents/negotiation_agent.py:74`)
-  5. Generate strategy (`generate_objection_response()` at `app/agents/negotiation_agent.py:91`)
-  6. Persist negotiation draft for review
-- Dependencies:
-  - db_handler contract functions, LLM client, validators.
+### Task and Scheduler Modules
+`app/tasks/agent_tasks.py`
+Purpose: queue wrapper around agent execution with retry bookkeeping.
+Key functions: `execute_registered_task()`, `execute_agent_task()`, `run_pipeline_task()`.
 
-## 5) Finance Module
+`app/tasks/scheduler.py`
+Purpose: autonomous scrape+pipeline orchestration with concurrency guard.
+Key functions: `_run_sequential_pipeline()`, `automated_pipeline_run_task()`.
 
-### `app/agents/finance_agent.py`
-- Problem solved: invoice issuance for signed contracts and dunning sequence generation.
-- Internal flow:
-  1. Find signed contracts (`run_finance_agent()` at `app/agents/finance_agent.py:148`)
-  2. Create invoices idempotently (`create_invoice()` db_handler)
-  3. Compute overdue days/stage (`calculate_days_overdue()` / `determine_dunning_stage()`)
-  4. Generate dunning text (`generate_dunning_email()` at `app/agents/finance_agent.py:68`)
-  5. Persist overdue update + pending review draft
-- Dependencies:
-  - db_handler invoice operations, LLM client.
+`app/tasks/celery_app.py`
+Purpose: Celery app configuration and local fallback behavior.
 
-## 6) Database Access Modules
+### AI/RAG Modules
+`app/services/opportunity_scoring_service.py`
+Purpose: hybrid rule + LLM probability scoring.
 
-### `app/database/db.py`
-- Problem solved: database engine/session management with optional fallback for local resilience.
-- Core operations:
-  - engine build/rebind (`_build_engine()`, `_configure_engine()`)
-  - runtime session context (`get_db_session()` at `app/database/db.py:73`)
-  - startup connectivity + optional SQLite fallback (`verify_database_connection()` at `app/database/db.py:82`)
+`app/services/rag_service.py`
+Purpose: semantic context storage/retrieval with embedding fallback.
 
-### `app/database/db_handler.py`
-- Problem solved: explicit state transition and review workflow data mutations.
-- Critical transition functions:
-  - leads: `save_draft()` / `mark_review_decision()`
-  - deals: `mark_deal_decision()`
-  - contracts: `mark_contract_decision()`
-  - invoices: `mark_dunning_decision()` / `mark_invoice_paid()`
-- Design: each function opens its own DB session and commits locally.
+## 9. Business Logic & Rules
 
-### `app/database/models.py`
-- Problem solved: normalized table model definitions and indexes.
-- Major entities:
-  - `Lead`, `Deal`, `Contract`, `Invoice`, `ReviewAudit`, `AgentRun`, `EmailLog`, `LLMLog`, tenant/auth entities.
+### Review Gate Semantics
+Drafts do not advance status. Progression is controlled only by decision functions:
+- Lead progression via `mark_review_decision()`.
+- Contract progression via `mark_contract_decision()`.
+- Dunning progression via `mark_dunning_decision()`.
 
-## 7) Task and Scheduler Modules
+### SDR Negative Gate Checks
+Leads are blocked for negative signals or forbidden sectors and if contacted within 30 days.
 
-### `app/tasks/agent_tasks.py`
-- Problem solved: queue wrapper around agent execution with retry bookkeeping and run tracking.
-- Key logic:
-  - `execute_registered_task()` at `app/tasks/agent_tasks.py:44`
-  - Celery task wrapper `execute_agent_task()` at `app/tasks/agent_tasks.py:147`
-  - fan-out pipeline queue task `run_pipeline_task()` at `app/tasks/agent_tasks.py:203`
+### SDR Signal Scoring
+Signal scoring weights:
+- Growth signals: +30
+- Tech change signals: +25
+- Decision maker role: +20
+- ICP fit: +15
+- Urgency: +10
 
-### `app/tasks/scheduler.py`
-- Problem solved: autonomous scrape+pipeline orchestration with concurrency guard.
-- Key logic:
-  - gate/lock checks (`_is_pipeline_enabled()`, `_check_active_pipeline_run()`)
-  - sequential run executor (`_run_sequential_pipeline()`)
-  - top-level scheduled task (`automated_pipeline_run_task()`)
+### Thresholds
+SDR: review queue threshold 85, auto-send threshold 92 (not implemented), signal threshold 60.
+Negotiation: approval threshold 85, max turns 3.
+Finance: dunning approval threshold 85.
 
-### `app/tasks/celery_app.py`
-- Problem solved: Celery app configuration and local fallback behavior when Celery import is unavailable.
-- Key logic:
-  - beat schedule injection (`configure_beat_schedule()`)
-  - task module registration (`register_task_modules()`)
+### Email Validation
+`validate_structure()` enforces greeting, sign-off, minimum word count, and forbids placeholder tokens.
 
-## 8) AI/RAG Scoring Modules
-
-### `app/services/opportunity_scoring_service.py`
-- Problem solved: probability scoring with deterministic factors and optional LLM signal.
-- Key functions:
-  - `_rule_score()`, `_llm_score()`, `score()`.
-
-### `app/services/rag_service.py`
-- Problem solved: semantic context storage/retrieval with model fallback.
-- Key functions:
-  - `ingest_knowledge()`
-  - `retrieve()`
-  - provider fallback to hash embedding when Ollama is unavailable.
-
-## Module Interaction Sequence (runtime)
-1. Endpoint/task trigger -> agent function call.
-2. Agent invokes service helpers.
-3. Service/data handlers read/write ORM models.
-4. Review status updated; progression happens only through decision functions.
+### Tenant Isolation
+All entities have `tenant_id` with tenant-scoped uniqueness constraints.

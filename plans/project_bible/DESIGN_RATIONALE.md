@@ -72,3 +72,7 @@ Rationale: avoid hard system failure when optional dependencies are unavailable.
 - Prefer additive service changes before endpoint-level complexity.
 - If introducing parallelism, preserve audit and state consistency guarantees.
 - If adding model providers, maintain current empty-string/fallback contracts to avoid behavioral regressions.
+
+## Cross-References
+Known limitations are summarized in `PROJECT_OVERVIEW.md` (Section 17).
+Future improvements are summarized in `PROJECT_OVERVIEW.md` (Section 18).

@@ -41,7 +41,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection, 
+            target_metadata=target_metadata, 
+            compare_type=True,
+            transaction_per_migration=True,  # Each migration runs in its own transaction
+        )
 
         with context.begin_transaction():
             context.run_migrations()

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 try:  # pragma: no cover - exercised when FastAPI is installed.
-    from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Response, status
+    from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Response, status, UploadFile
     from fastapi.responses import RedirectResponse
 except ModuleNotFoundError:  # pragma: no cover - local fallback path.
     class APIRouter:
@@ -66,6 +66,15 @@ except ModuleNotFoundError:  # pragma: no cover - local fallback path.
 
     def Header(default: Any = None, *args: Any, **kwargs: Any) -> Any:
         return default
+
+    # Mock UploadFile for fallback when FastAPI is not installed
+    class UploadFile:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.filename: str = kwargs.get("filename", "")
+            self.content_type: str = kwargs.get("content_type", "")
+
+        async def read(self, size: int = -1) -> bytes:
+            return b""
 
     class status:
         HTTP_200_OK = 200

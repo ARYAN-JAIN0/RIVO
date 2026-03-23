@@ -1,47 +1,25 @@
-# Ask Mode Rules
+# Ask Mode Rules (Non-Obvious Only)
 
-## Project Overview
-RIVO is a multi-agent sales automation system with pipeline: SDR → Sales → Negotiation → Finance.
+## Misleading Code Organization
+- `app/models/` package exists but is NOT the active ORM layer — `app/database/models.py` is the real one (different Base class)
+- `app/models/enums.py` exists but is NOT used — `app/core/enums.py` is the active enum source
+- `app/core/logging.py` is NOT the logging config — it's helpers. Config is `app/core/logging_config.py`
+- `app/core/config.py` uses frozen dataclass, NOT Pydantic BaseSettings despite Pydantic being a dependency
+- `app/api/_compat.py` provides full FastAPI mock — code can import without FastAPI installed
 
-## Key Architecture Points
-- **FastAPI backend** with endpoints in [`app/api/v1/endpoints.py`](app/api/v1/endpoints.py)
-- **SQLAlchemy ORM** with models in [`app/database/models.py`](app/database/models.py)
-- **Ollama LLM** integration via [`call_llm()`](app/services/llm_client.py:29)
-- **Alembic migrations** in `migrations/versions/` directory
-- **Celery tasks** for async agent execution in [`app/tasks/agent_tasks.py`](app/tasks/agent_tasks.py)
+## Architecture Context
+- Pipeline: SDR → Sales → Negotiation → Finance (status-driven, see `app/orchestrator.py`)
+- `app/database/db_handler.py` (23KB) is the main data access layer — not the services
+- `save_draft()` does NOT change lead status — only `mark_review_decision()` advances leads
+- Two Streamlit dashboards: `app/crm_dashboard.py` and `app/multi_agent_dashboard.py`
+- Hand-rolled JWT in `app/auth/jwt.py` (no PyJWT) with HS256
 
-## Status Enums
-All status values use title case: `"New"`, `"Contacted"`, `"Qualified"`, `"Proposal Sent"`, etc. See [`app/core/enums.py`](app/core/enums.py).
+## Key Thresholds (hardcoded, not configurable)
+- SDR review queue: score ≥ 85, signal threshold: ≥ 60
+- Negotiation approval: confidence ≥ 85, max 3 turns
+- Finance dunning approval: confidence ≥ 85
 
-## Configuration
-Runtime config via [`app/core/config.py`](app/core/config.py) - uses environment variables with defaults. Key settings:
-- `DATABASE_URL`: PostgreSQL or SQLite connection (default: `sqlite:///./rivo.db`)
-- `OLLAMA_URL`: LLM endpoint (default: `http://localhost:11434`)
-- `OLLAMA_MODEL`: Model name (default: `qwen2.5:7b`)
-- `DB_CONNECTIVITY_REQUIRED`: When false (default), auto-falls back to SQLite if PostgreSQL unavailable
-
-## Data Flow
-1. Leads enter via SDR agent (status: New)
-2. SDR generates outreach emails, leads progress to Contacted
-3. Sales agent qualifies leads, creates deals (status: Qualified)
-4. Negotiation agent handles contracts (status: Negotiating → Signed)
-5. Finance agent processes invoices (status: Sent → Paid/Overdue)
-
-## Entity Lifecycle
-
-| Entity | Status Flow |
-|--------|-------------|
-| Lead | New → Contacted → Qualified/Disqualified |
-| Deal | Qualified → Proposal Sent → Won/Lost |
-| Contract | Negotiating → Signed → Completed/Cancelled |
-| Invoice | Sent → Paid/Overdue |
-
-## Key Thresholds
-- SDR `REVIEW_QUEUE_THRESHOLD`: 85 (min score for review queue)
-- SDR `SIGNAL_THRESHOLD`: 60 (min signal score to proceed)
-- Negotiation `MAX_NEGOTIATION_TURNS`: 3
-
-## Documentation
-- [`README.md`](README.md) for project overview
-- [`db/schema.sql`](db/schema.sql) for database schema reference
-- [`docs/phase1/`](docs/phase1/) for architecture documentation
+## Environment Behavior
+- `DB_CONNECTIVITY_REQUIRED` defaults True in production, False otherwise
+- SDR identity hardcoded in `config/sdr_profile.py` (not env-var configurable)
+- `get_config()` is `@lru_cache(maxsize=8)` keyed by env parameter — no cache clearing

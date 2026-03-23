@@ -100,6 +100,13 @@ class Config:
     SCRAPER_DAILY_CAP: int
     # Security Configuration
     PASSWORD_PEPPER: str
+    # RAG Configuration
+    OLLAMA_EMBEDDING_MODEL: str
+    RAG_EMBEDDING_DIMS: int
+    RAG_CHUNK_SIZE_TOKENS: int
+    RAG_CHUNK_OVERLAP_TOKENS: int
+    RAG_MAX_CONTEXT_TOKENS: int
+    RAG_DEFAULT_TOP_K: int
 
     @property
     def is_production(self) -> bool:
@@ -159,6 +166,13 @@ def _build_config(env: str | None = None) -> Config:
         SCRAPER_DAILY_CAP=int(os.getenv("SCRAPER_DAILY_CAP", "100")),
         # Security Configuration
         PASSWORD_PEPPER=os.getenv("PASSWORD_PEPPER", ""),
+        # RAG Configuration
+        OLLAMA_EMBEDDING_MODEL=os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"),
+        RAG_EMBEDDING_DIMS=int(os.getenv("RAG_EMBEDDING_DIMS", "768")),
+        RAG_CHUNK_SIZE_TOKENS=int(os.getenv("RAG_CHUNK_SIZE_TOKENS", "500")),
+        RAG_CHUNK_OVERLAP_TOKENS=int(os.getenv("RAG_CHUNK_OVERLAP_TOKENS", "75")),
+        RAG_MAX_CONTEXT_TOKENS=int(os.getenv("RAG_MAX_CONTEXT_TOKENS", "2000")),
+        RAG_DEFAULT_TOP_K=int(os.getenv("RAG_DEFAULT_TOP_K", "5")),
     )
     _validate_config(config)
     return config

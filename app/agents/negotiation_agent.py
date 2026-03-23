@@ -37,7 +37,8 @@ from app.database.db_handler import (
     update_contract_negotiation,
 )
 from app.database.models import Contract
-from app.services.llm_client import call_llm
+# Multi-model LLM system (DeepSeek for negotiation reasoning)
+from app.llm.facade import generate
 from app.utils.validators import sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,12 @@ def generate_objection_response(deal, objections: str) -> tuple[str, int]:
     Returns:
         A tuple of (strategy_text, confidence_score).
     """
+    from pydantic import BaseModel
+    
+    class NegotiationResponse(BaseModel):
+        strategy: str
+        confidence: int
+    
     classified = classify_objections(objections)
     frameworks = [f"{cat}: {fw}" for cat, fw in classified]
     company = sanitize_text(str(getattr(deal, "company", "Company")))
@@ -117,17 +124,23 @@ Output JSON only:
   "confidence": 85
 }}
 """
-    response = call_llm(prompt, json_mode=True)
-    if response:
+    # Use multi-model system (DeepSeek for negotiation reasoning)
+    result = generate(
+        prompt=prompt,
+        agent_name="negotiation",
+        task_type="negotiation",
+        schema=NegotiationResponse,
+        use_cache=False,
+        use_fallback=True,
+    )
+    
+    if result and hasattr(result, 'strategy') and hasattr(result, 'confidence'):
         try:
-            data = json.loads(response)
-            strategy = sanitize_text(data.get("strategy", ""))
-            # Safe confidence extraction with bounds checking
-            raw_confidence = data.get("confidence", 0)
-            confidence = max(0, min(int(raw_confidence), 100))
+            strategy = sanitize_text(result.strategy)
+            confidence = max(0, min(int(result.confidence), 100))
             if strategy:
                 return strategy, confidence
-        except (json.JSONDecodeError, TypeError, ValueError) as e:
+        except (ValueError, TypeError) as e:
             logger.warning(
                 "negotiation.confidence.parse_failed",
                 extra={"event": "negotiation.confidence.parse_failed", "error": str(e)},

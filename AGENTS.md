@@ -112,3 +112,58 @@ When Celery is not installed, a mock implementation runs tasks synchronously. Se
 
 ### Tenant Isolation
 All entities have `tenant_id` with default=1. Unique constraints are tenant-scoped (e.g., `uq_leads_tenant_email`). See [`app/database/models.py`](app/database/models.py).
+
+## ⚠️ Non-Obvious Gotchas
+
+### Dual Model System — NEVER Import from `app.models`
+The project has two ORM model packages with **different Base classes**:
+- **`app/database/models.py`** — Active system, used by all agents, db_handler, API, and Alembic. Import models HERE.
+- **`app/models/`** — Planned refactor using modern `mapped_column` style. **NOT wired into Alembic or runtime code.**
+
+Importing `Lead` from `app.models.lead` gives a different class than `Lead` from `app.database.models` — queries will fail silently.
+
+### Dual Enum System — NEVER Import from `app.models.enums`
+- **`app/core/enums.py`** — Active, plain `Enum`. Used everywhere.
+- **`app/models/enums.py`** — Inactive, `str, Enum` subclass with extra values (`Void`, `RunStatus`, `UserRole`).
+
+### `ReviewStatus` Breaks Title Case Convention
+[`ReviewStatus`](app/core/enums.py:72) has three ALL_CAPS values: `"STRUCTURAL_FAILED"`, `"BLOCKED"`, `"SKIPPED"` — unlike all other enums which use title case.
+
+### `get_db_session()` Does NOT Auto-Commit
+You must call `session.commit()` explicitly within the `with` block. The context manager only closes the session in `finally`.
+
+### Two Different Forbidden Token Lists
+- [`FORBIDDEN_TOKENS`](app/utils/validators.py:8) — 8 tokens (used by `validate_structure()`)
+- [`FORBIDDEN_PLACEHOLDER_TOKENS`](app/core/schemas.py:14) — 5 tokens (used by Pydantic schemas)
+
+Emails can pass Pydantic validation but fail `validate_structure()` for tokens like `"[your position]"`.
+
+### API Imports Must Use Compat Layer
+API modules import from [`app/api/_compat.py`](app/api/_compat.py), NOT directly from `fastapi`. This provides mock fallbacks when FastAPI isn't installed.
+
+### `sys.path.insert` is Legacy — Do NOT Add to New Files
+Eight legacy files use `sys.path.insert(0, PROJECT_ROOT)`. New modules should NOT replicate this — `pythonpath = .` in `pytest.ini` handles imports.
+
+### `DB_CONNECTIVITY_REQUIRED` Default Varies by Environment
+Defaults to `True` when `ENV=production`, `False` otherwise. Not a simple false default.
+
+### Test Isolation Only Covers `db_handler`
+The `isolated_session_factory` fixture patches `get_db_session` on the `db_handler` module only. Code importing `get_db_session` from `app.database.db` directly or using `BaseService(db=None)` will use the **real database** in tests.
+
+### Auth Bypass in Script Mode
+[`get_current_user(token=None)`](app/core/dependencies.py:38) returns admin context (user_id=1, tenant_id=1, role=admin). Unauthenticated API paths run as admin unless explicitly blocked.
+
+### SDR Profile is Hardcoded
+[`config/sdr_profile.py`](config/sdr_profile.py) contains `SDR_NAME = "Aryan Jain"`, `SDR_COMPANY = "RevoAI"`, etc. Not env-var configurable.
+
+### No Linter/Formatter Configured
+No ruff, pylint, mypy, or black. Only `python -m compileall` for syntax checking. Follow existing code style manually.
+
+### Structured Logging Convention
+Log calls use `logger.info("event.name", extra={"event": "event.name", ...})` with dotted event names. The `extra["event"]` field is the canonical filter key.
+
+### Hand-Rolled JWT
+[`app/auth/jwt.py`](app/auth/jwt.py) implements HS256 JWT from scratch using `hmac` + `hashlib`. No PyJWT dependency.
+
+### Docker vs CI PostgreSQL Mismatch
+`docker-compose.yml` uses `postgres:14`, CI uses `postgres:16`. Keep migrations compatible with both.

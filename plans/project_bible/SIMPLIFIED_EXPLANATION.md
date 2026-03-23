@@ -1,14 +1,14 @@
-﻿# SIMPLIFIED EXPLANATION
+# SIMPLIFIED EXPLANATION
 
 ## Simple Explanation
-RIVO is like an automated revenue operations assembly line with human checkpoints.
+RIVO is an automated revenue operations assembly line with human checkpoints.
 
 ### Real-world analogy
-- **Lead acquisition** is like collecting new customer cards.
-- **SDR** is the assistant drafting first outreach emails.
-- **Sales** is the rep qualifying serious opportunities.
-- **Negotiation** is the specialist handling objections.
-- **Finance** is billing and payment follow-up.
+- Lead acquisition is like collecting new customer cards.
+- SDR drafts first outreach emails.
+- Sales qualifies serious opportunities.
+- Negotiation handles objections.
+- Finance handles billing and payment follow-up.
 
 Nothing moves to the next major stage without an approval decision where required.
 
@@ -24,12 +24,6 @@ Nothing moves to the next major stage without an approval decision where require
 9. Finance logic creates invoices and overdue reminders if needed.
 10. Payment status is tracked and can be marked paid.
 
-## Why this matters for non-technical users
-- You get faster execution without losing control.
-- Approvals are auditable.
-- Pipeline status is visible by stage.
-- Failures in AI services do not fully stop operations.
-
 ## Technical Explanation (Plain but Accurate)
 - API and scheduler both trigger the same core stage agents.
 - Database tables store each entity state (`Lead`, `Deal`, `Contract`, `Invoice`).
@@ -41,3 +35,19 @@ Key runtime anchors:
 - Primary API routes: `app/api/v1/endpoints.py:59`
 - Scheduler automation: `app/tasks/scheduler.py:193`
 - Review transition authority: `app/database/db_handler.py:129`, `app/database/db_handler.py:351`, `app/database/db_handler.py:488`
+
+## 20. LLM Usability Layer
+Compressed summary for small models:
+RIVO is a four-stage pipeline with explicit review gates. Agents generate drafts, but state transitions only occur via decision functions in `db_handler`. Tasks and scheduler run the same stages as API-triggered paths. LLM calls can fail and return empty strings; fallbacks are deterministic.
+
+Key reasoning anchors:
+Pipeline order: SDR -> Sales -> Negotiation -> Finance.
+Review gate authority: `mark_review_decision`, `mark_contract_decision`, `mark_dunning_decision`.
+Fallback contract: `call_llm()` returns empty string on failure.
+DB fallback: optional SQLite fallback when Postgres is unavailable.
+
+If X -> check Y mappings:
+If drafts exist but statuses do not advance -> check review decision functions and review_status fields.
+If scheduler does not run -> check `_is_pipeline_enabled()` and active run guard.
+If AI output is empty -> check `call_llm()` return handling and fallback templates.
+If API auth fails -> check JWT secret, token expiry, and `_authz.authorize()` scopes.

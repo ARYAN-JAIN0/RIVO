@@ -122,6 +122,21 @@ with tab1:
         
         if pending_sdr.empty:
             st.success("✅ No pending SDR reviews")
+            st.markdown("---")
+            st.markdown("### All Leads Status")
+            
+            # Show all leads
+            from app.database.db import get_db_session
+            from app.database.models import Lead
+            from app.utils.orm import orm_to_df
+            
+            with get_db_session() as db_session:
+                all_leads = orm_to_df(db_session.query(Lead).all())
+            
+            if not all_leads.empty:
+                st.dataframe(all_leads[['id', 'name', 'company', 'status', 'review_status', 'signal_score']], use_container_width=True)
+            
+            st.info("💡 Click 'Run SDR Agent' in sidebar to process new leads!")
         else:
             st.info(f"📊 {len(pending_sdr)} emails pending review")
             
@@ -171,8 +186,41 @@ with tab1:
                     
                     with btn_col1:
                         if st.button("✅ Approve & Send", key=f"sdr_approve_{row_id}"):
+                            # Get lead details for sending
+                            from app.database.db import get_db_session
+                            from app.database.models import Lead
+                            from app.services.email_service import EmailService
+                            
+                            email_sent = False
+                            send_error = None
+                            
+                            with get_db_session() as session:
+                                lead = session.query(Lead).filter(Lead.id == row_id).first()
+                                if lead and lead.draft_message:
+                                    # Send email via SMTP
+                                    try:
+                                        email_service = EmailService()
+                                        subject = f"Quick idea for {lead.company}"
+                                        email_sent = email_service.send_email(
+                                            tenant_id=lead.tenant_id or 1,
+                                            lead_id=lead.id,
+                                            to_email=lead.email,
+                                            subject=subject,
+                                            html_body=f"<p>{lead.draft_message}</p>",
+                                            text_body=lead.draft_message
+                                        )
+                                    except Exception as e:
+                                        send_error = str(e)
+                            
+                            # Update review status
                             mark_review_decision(row_id, "Approved", edited_email)
-                            st.success("Approved!")
+                            
+                            if email_sent:
+                                st.success("✅ Approved & Email Sent!")
+                            elif send_error:
+                                st.warning(f"Approved but email failed: {send_error}")
+                            else:
+                                st.success("Approved! (sandbox mode)")
                             st.rerun()
                     
                     with btn_col2:
@@ -543,10 +591,54 @@ with tab4:
 
 
 # ==============================================================================
-# SIDEBAR: SYSTEM HEALTH
+# SIDEBAR: RUN AGENTS
 # ==============================================================================
 
 with st.sidebar:
+    st.header("🚀 Run Agents")
+    st.markdown("Click to run each agent manually:")
+    
+    # Run SDR Agent
+    if st.button("📧 Run SDR Agent", type="primary"):
+        with st.spinner("Running SDR Agent..."):
+            try:
+                from app.agents.sdr_agent import run_sdr_agent
+                run_sdr_agent()
+                st.success("SDR Agent completed!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    # Run Sales Agent
+    if st.button("💼 Run Sales Agent", type="primary"):
+        with st.spinner("Running Sales Agent..."):
+            try:
+                from app.agents.sales_agent import run_sales_agent
+                run_sales_agent()
+                st.success("Sales Agent completed!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    # Run Negotiation Agent
+    if st.button("🤝 Run Negotiation Agent", type="primary"):
+        with st.spinner("Running Negotiation Agent..."):
+            try:
+                from app.agents.negotiation_agent import run_negotiation_agent
+                run_negotiation_agent()
+                st.success("Negotiation Agent completed!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    # Run Finance Agent
+    if st.button("💰 Run Finance Agent", type="primary"):
+        with st.spinner("Running Finance Agent..."):
+            try:
+                from app.agents.finance_agent import run_finance_agent
+                run_finance_agent()
+                st.success("Finance Agent completed!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    st.markdown("---")
     st.header("📊 System Overview")
     
     try:
@@ -570,6 +662,27 @@ with st.sidebar:
         # Refresh button
         if st.button("🔄 Refresh Dashboard"):
             st.rerun()
+        
+        st.markdown("---")
+        
+        # Database Stats
+        st.header("📈 Database Stats")
+        try:
+            from app.database.db import get_db_session
+            from app.database.models import Lead, Deal, Contract, Invoice
+            
+            with get_db_session() as session:
+                total_leads = session.query(Lead).count()
+                total_deals = session.query(Deal).count()
+                total_contracts = session.query(Contract).count()
+                total_invoices = session.query(Invoice).count()
+            
+            st.metric("Leads", total_leads)
+            st.metric("Deals", total_deals)
+            st.metric("Contracts", total_contracts)
+            st.metric("Invoices", total_invoices)
+        except Exception as e:
+            st.error(f"Error: {e}")
 
     
     except Exception as e:

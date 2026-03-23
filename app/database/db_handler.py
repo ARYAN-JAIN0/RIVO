@@ -315,6 +315,7 @@ def update_contract_negotiation(contract_id: int, objections: str, proposed_solu
                 return
             contract.objections = sanitize_text(objections, max_len=10000)
             contract.proposed_solutions = sanitize_text(proposed_solutions, max_len=10000)
+            contract.confidence_score = confidence_score
             contract.last_updated = datetime.utcnow()
             # Human review gate is mandatory; never auto-approve.
             contract.review_status = ReviewStatus.PENDING.value

@@ -73,8 +73,16 @@ def run_agent(agent_name: str, authorization: str | None = Header(default=None, 
     user = _authorize(authorization, scopes=[f"agents.{agent_name}.run"])
     if agent_name not in {"sdr", "sales", "negotiation", "finance"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported agent")
-    task = execute_agent_task.delay(agent_name=agent_name, tenant_id=user.tenant_id, user_id=user.user_id)
-    return {"status": "queued", "task_id": task.id}
+    
+    # Run agent directly (for testing - use .delay() for production)
+    from app.orchestrator import RevoOrchestrator
+    orchestrator = RevoOrchestrator()
+    
+    try:
+        result = orchestrator.run_single_agent(agent_name)
+        return {"status": "completed", "agent": agent_name, "result": result}
+    except Exception as e:
+        return {"status": "error", "agent": agent_name, "error": str(e)}
 
 
 @router.post("/pipeline/run")

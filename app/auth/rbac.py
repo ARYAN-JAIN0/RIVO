@@ -23,6 +23,13 @@ ROLE_SCOPES: dict[str, set[str]] = {
         "crm.deals.read",
         "crm.deals.write",
         "crm.contracts.read",
+        # Negotiation scopes
+        "negotiation.respond",
+        "negotiation.history.read",
+        "negotiation.constraints.read",
+        # RAG scopes
+        "rag.ingest",
+        "rag.query",
     },
     "sdr": {
         "agents.sdr.run",
@@ -44,6 +51,9 @@ ROLE_SCOPES: dict[str, set[str]] = {
         "crm.invoices.read",
         "crm.invoices.write",
         "crm.contracts.read",
+        # Finance API scopes
+        "finance.risk.read",
+        "finance.forecast.read",
     },
     "viewer": {
         "runs.read",

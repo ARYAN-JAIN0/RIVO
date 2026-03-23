@@ -1,5 +1,23 @@
 # FUNCTION_REFERENCE
 
+## 8. Dependency Graph
+
+### Internal Dependencies (high-level)
+API layer -> Services/Agents -> Database handlers/models.
+Tasks and scheduler -> Orchestrator -> Agents -> Services/DB.
+LLM and RAG -> Services/Agents -> DB logs.
+
+### Internal Module Couplings (selected)
+`app/api/v1/endpoints.py` depends on `app/services/*`, `app/tasks/agent_tasks.py`, `app/auth/*`.
+`app/agents/*` depend on `app/database/db_handler.py`, `app/services/llm_client.py`, `app/utils/validators.py`.
+`app/services/*` depend on `app/database/models.py`, `app/database/db.py`, `app/core/enums.py`.
+`app/tasks/*` depend on `app/orchestrator.py`, `app/database/db_handler.py`, `app/tasks/registry.py`.
+`app/llm/*` depend on `app/core/config.py` and HTTP clients.
+`app/rag/*` depend on `pgvector` (optional) or hash fallback.
+
+### External Libraries (from `requirements.txt`)
+FastAPI, SQLAlchemy, Alembic, Celery, Redis, Pydantic, Requests, Streamlit, ReportLab, Psycopg2, PGVector, Uvicorn, BeautifulSoup4, Bcrypt, Pandas, Faker, Httpx, Python-dotenv.
+
 ## Scope
 - Runtime-wired, code-accurate function reference (top 120 by execution impact).
 - Selection priority: mounted API handlers, orchestration control, task/scheduler execution, state-transition authority, and security/middleware gates.

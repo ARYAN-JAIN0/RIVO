@@ -19,7 +19,8 @@ from app.database.db_handler import (
     save_dunning_draft,
     update_invoice_status,
 )
-from app.services.llm_client import call_llm
+# Multi-model LLM system (Qwen for finance email generation)
+from app.llm.facade import generate
 from config.sdr_profile import SDR_COMPANY, SDR_EMAIL, SDR_NAME
 from app.utils.validators import sanitize_text
 
@@ -66,6 +67,12 @@ def determine_dunning_stage(days_overdue: int) -> int:
 
 
 def generate_dunning_email(invoice, stage_config: dict[str, str]) -> tuple[str, int]:
+    from pydantic import BaseModel
+    
+    class DunningEmailOutput(BaseModel):
+        email_body: str
+        confidence: int
+    
     company = sanitize_text(str(getattr(getattr(invoice, "lead", None), "company", "Customer")))
     amount = int(getattr(invoice, "amount", 0) or 0)
     invoice_id = getattr(invoice, "id", "INV-UNKNOWN")
@@ -92,14 +99,20 @@ Output JSON only:
   "confidence": 85
 }}
 """
-    response = call_llm(prompt, json_mode=True)
-    if response:
+    # Use multi-model system (Qwen for finance email generation)
+    result = generate(
+        prompt=prompt,
+        agent_name="finance",
+        task_type="finance",
+        schema=DunningEmailOutput,
+        use_cache=False,
+        use_fallback=True,
+    )
+    
+    if result and hasattr(result, 'email_body') and hasattr(result, 'confidence'):
         try:
-            parsed = parse_schema(DunningGeneration, response.strip())
-            # Safe confidence extraction with bounds checking
-            raw_confidence = getattr(parsed, "confidence", 0)
-            confidence = max(0, min(int(raw_confidence), 100))
-            return sanitize_text(parsed.email_body, max_len=2000), confidence
+            confidence = max(0, min(int(result.confidence), 100))
+            return sanitize_text(result.email_body, max_len=2000), confidence
         except (ValueError, TypeError, AttributeError) as e:
             logger.warning(
                 "finance.dunning.parse_failed",

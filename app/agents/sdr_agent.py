@@ -22,7 +22,10 @@ from app.database.db_handler import (
 )
 from app.services.email_service import EmailService
 
-from app.services.llm_client import call_llm
+# Multi-model LLM system (Qwen for email generation)
+from app.llm.facade import generate
+from app.schemas.llm_outputs import EmailOutput
+from app.validation import validate_output
 from config.sdr_profile import SDR_COMPANY, SDR_EMAIL, SDR_NAME, SDR_ROLE
 from app.utils.validators import deterministic_email_quality_score, sanitize_text, validate_structure
 
@@ -30,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 # Threshold constants - clarified purpose
 REVIEW_QUEUE_THRESHOLD = 85  # Minimum score to enter review queue (not used for auto-send)
-AUTO_SEND_THRESHOLD = 92     # Score for immediate send without human review
-SIGNAL_THRESHOLD = 60        # Minimum signal score to proceed with email generation
+AUTO_SEND_THRESHOLD = 85    # Score for immediate send without human review
+SIGNAL_THRESHOLD = 30        # Minimum signal score to proceed with email generation
 PROMPT_VERSION = "sdr-v2.0"
 
 # Legacy alias for backwards compatibility
@@ -137,30 +140,28 @@ Output JSON only:
 
 def generate_email_body(lead) -> str:
     prompt = _generation_prompt(lead)
-    response_text = call_llm(prompt, json_mode=True).strip()
+    
+    # Use multi-model system (Qwen) with schema validation
+    result = generate(
+        prompt=prompt,
+        agent_name="sdr",
+        task_type="email_generation",
+        schema=EmailOutput,
+        use_cache=False,
+        use_fallback=True,
+    )
+    
+    # Log the interaction
+    if result and hasattr(result, 'model_dump_json'):
+        response_text = result.model_dump_json()
+    else:
+        response_text = str(result) if result else ""
     log_llm_interaction("sdr", prompt, response_text, tenant_id=getattr(lead, "tenant_id", 1), lead_id=getattr(lead, "id", None))
-    if not response_text:
-        return build_fallback_email_body(lead)
-
-    try:
-        parsed = parse_schema(SDREmailGeneration, response_text)
-        return safe_str(parsed.email_body) or build_fallback_email_body(lead)
-    except ValueError:
-        repair_prompt = (
-            "Return valid JSON matching keys thought_process and email_body only. "
-            f"Original output:\n{response_text}"
-        )
-        repaired = call_llm(repair_prompt, json_mode=True).strip()
-        try:
-            parsed = parse_schema(SDREmailGeneration, repaired)
-            return safe_str(parsed.email_body) or build_fallback_email_body(lead)
-        except ValueError:
-            # Final fallback: attempt plain json parse, otherwise deterministic.
-            try:
-                data = json.loads(response_text)
-                return safe_str(data.get("email_body", "")) or build_fallback_email_body(lead)
-            except json.JSONDecodeError:
-                return build_fallback_email_body(lead)
+    
+    if result and hasattr(result, 'body'):
+        return safe_str(result.body) or build_fallback_email_body(lead)
+    
+    return build_fallback_email_body(lead)
 
 
 def inject_signature(body: str) -> str:
@@ -175,6 +176,12 @@ def inject_signature(body: str) -> str:
 
 
 def evaluate_email(email_text: str, lead) -> int:
+    from pydantic import BaseModel
+    
+    class EmailEvaluation(BaseModel):
+        critique: str
+        score: int
+    
     deterministic_score = deterministic_email_quality_score(
         email_text=email_text,
         company=safe_str(getattr(lead, "company", "")),
@@ -192,13 +199,28 @@ Email:
 {email_text}
 """
     llm_score = 0
-    response = call_llm(prompt, json_mode=True).strip()
-    log_llm_interaction("sdr", prompt, response, tenant_id=getattr(lead, "tenant_id", 1), lead_id=getattr(lead, "id", None))
-    if response:
+    
+    # Use multi-model system (Qwen) for email evaluation
+    result = generate(
+        prompt=prompt,
+        agent_name="sdr",
+        task_type="email_generation",
+        schema=EmailEvaluation,
+        use_cache=False,
+        use_fallback=True,
+    )
+    
+    # Log the interaction
+    if result and hasattr(result, 'model_dump_json'):
+        response_text = result.model_dump_json()
+    else:
+        response_text = str(result) if result else ""
+    log_llm_interaction("sdr", prompt, response_text, tenant_id=getattr(lead, "tenant_id", 1), lead_id=getattr(lead, "id", None))
+    
+    if result and hasattr(result, 'score'):
         try:
-            parsed = parse_schema(SDREmailEvaluation, response)
             # Safe score extraction with bounds checking
-            raw_score = getattr(parsed, "score", 0)
+            raw_score = getattr(result, "score", 0)
             llm_score = max(0, min(int(raw_score), 100))
         except (ValueError, TypeError, AttributeError) as e:
             logger.warning(

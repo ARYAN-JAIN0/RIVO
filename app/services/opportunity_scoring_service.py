@@ -5,7 +5,8 @@ import logging
 from dataclasses import dataclass, asdict, field
 from typing import List, Optional
 
-from app.services.llm_client import call_llm
+# Multi-model LLM system (DeepSeek for reasoning/scoring)
+from app.llm.facade import generate
 from app.utils.validators import sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,12 @@ class OpportunityScoringService:
 
     @staticmethod
     def _llm_score(lead, transcript: str = "") -> tuple[int, str]:
+        from pydantic import BaseModel
+        
+        class LLMScoringOutput(BaseModel):
+            llm_score: int
+            explanation: str
+        
         prompt = f"""
 You are a sales intelligence model. Return JSON only.
 Analyze sentiment, buying intent, and objection intensity for this lead context.
@@ -137,17 +144,25 @@ Lead:
 JSON:
 {{"llm_score": 0-100, "explanation": "short"}}
 """
-        response = call_llm(prompt, json_mode=True).strip()
-        if not response:
-            return 50, "LLM unavailable; neutral probability applied"
-
-        try:
-            data = json.loads(response)
-            score = int(data.get("llm_score", 50))
-            return max(0, min(score, 100)), sanitize_text(str(data.get("explanation", "LLM-derived intent/objection score")), 1200)
-        except (ValueError, TypeError, json.JSONDecodeError):
-            logger.warning("opportunity.llm_parse_failed", extra={"event": "opportunity.llm_parse_failed"})
-            return 50, "Invalid LLM payload; neutral score fallback"
+        # Use multi-model system (DeepSeek for reasoning)
+        result = generate(
+            prompt=prompt,
+            agent_name="sales",
+            task_type="sales_reasoning",
+            schema=LLMScoringOutput,
+            use_cache=False,
+            use_fallback=True,
+        )
+        
+        if result and hasattr(result, 'llm_score'):
+            try:
+                score = int(result.llm_score)
+                explanation = sanitize_text(str(result.explanation), 1200)
+                return max(0, min(score, 100)), explanation
+            except (ValueError, TypeError):
+                pass
+        
+        return 50, "LLM unavailable; neutral probability applied"
 
     def _generate_explanation(
         self,

@@ -1,56 +1,30 @@
-# Code Mode Rules
+# Code Mode Rules (Non-Obvious Only)
 
-## Database Session Management
-Always use `get_db_session()` context manager - never create sessions directly:
-```python
-from app.database.db import get_db_session
-with get_db_session() as session:
-    # queries here
-```
+## Import Rules
+- Models: ONLY from `app.database.models`, NEVER from `app.models` (different Base class, not wired to Alembic)
+- Enums: ONLY from `app.core.enums`, NEVER from `app.models.enums` (different subclass type)
+- API modules: Import from `app.api._compat`, not directly from `fastapi`
+- Do NOT add `sys.path.insert(0, PROJECT_ROOT)` to new files — this is legacy
 
-## Enum Values
-Use title case strings for status values: `"New"`, `"Contacted"`, `"Qualified"`, `"Disqualified"` - NOT lowercase. See [`app/core/enums.py`](app/core/enums.py).
+## Session & Data
+- `get_db_session()` does NOT auto-commit — call `session.commit()` explicitly
+- `get_db()` is for FastAPI dependency injection (yield); `get_db_session()` is the `with`-statement context manager for agents/services
+- `BaseService(db=None)` creates an unmanaged session — always pass a session or use context manager
+- `call_llm()` returns `""` on failure, not None — check truthiness before `json.loads()`
+- Use `safe_parse_json()` from `app.core.schemas` for LLM response parsing
 
-## LLM Integration
-Import and use [`call_llm()`](app/services/llm_client.py:29) for all LLM calls:
-```python
-from app.services.llm_client import call_llm
-response = call_llm(prompt, json_mode=True)  # for structured output
-if response:  # CRITICAL: check for empty string failure
-    data = json.loads(response)
-else:
-    # use fallback logic
-```
+## Enum Gotchas
+- All status enums use title case (`"New"`, `"Contacted"`) EXCEPT `ReviewStatus` which has ALL_CAPS: `"STRUCTURAL_FAILED"`, `"BLOCKED"`, `"SKIPPED"`
+- `FORBIDDEN_TOKENS` (8 items in `app/utils/validators.py`) ≠ `FORBIDDEN_PLACEHOLDER_TOKENS` (5 items in `app/core/schemas.py`)
 
-## Email Validation
-Before saving AI-generated emails, validate with [`validate_structure()`](app/utils/validators.py:39):
-```python
-from app.utils.validators import validate_structure, contains_forbidden_tokens
-if not validate_structure(email_text):
-    # reject email
-```
+## Style
+- No linter/formatter — only `python -m compileall` syntax check
+- Use `from __future__ import annotations` (convention in ~75% of existing modules)
+- Structured logging: `logger.info("dotted.event", extra={"event": "dotted.event", ...})`
+- Config is a frozen dataclass (`app/core/config.py`), NOT Pydantic BaseSettings
+- SDR identity hardcoded in `config/sdr_profile.py`, not env-configurable
 
-## Service Classes
-Extend [`BaseService`](app/services/base_service.py) for new services - it provides context manager support and transaction handling.
-
-## Test Isolation
-When writing tests, use the `isolated_session_factory` fixture from [`tests/conftest.py`](tests/conftest.py) for database isolation. Tests create isolated SQLite databases in `.test_tmp/` directory.
-
-## Review Gate Pattern
-When saving SDR drafts, use [`save_draft()`](app/database/db_handler.py:94) - it does NOT modify lead status. Only [`mark_review_decision()`](app/database/db_handler.py) can advance leads to Contacted status.
-
-## SDR Negative Gate
-Before processing leads in SDR agent, check [`check_negative_gate()`](app/agents/sdr_agent.py:45) which rejects:
-- Leads with "layoff" or "competitor" in negative_signals
-- Forbidden sectors: government, academic, education, non-profit, ngo
-- Leads contacted within 30 days
-
-## Safe JSON Parsing
-Use [`safe_parse_json()`](app/core/schemas.py:55) for LLM responses:
-```python
-from app.core.schemas import safe_parse_json
-data = safe_parse_json(llm_response, default={"score": 0})
-```
-
-## Tenant Isolation
-All new entities must include `tenant_id` (default=1). Unique constraints are tenant-scoped. See [`app/database/models.py`](app/database/models.py).
+## Testing
+- `isolated_session_factory` fixture ONLY patches `db_handler.get_db_session` — other imports of `get_db_session` are NOT patched
+- No shared LLM mock fixture — mock `call_llm()` per test
+- `pytest.ini` sets `pythonpath = .` — no sys.path hacks needed in tests

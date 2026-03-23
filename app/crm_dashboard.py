@@ -104,6 +104,50 @@ with st.sidebar:
     st.markdown("**Invoice Status:**")
     for status in INVOICE_STATUS_VALUES:
         st.markdown(f"- {status}")
+    
+    st.markdown("---")
+    st.markdown("### 🚀 Run Agents")
+    st.markdown("Click to run each agent:")
+    
+    # Run SDR Agent
+    if st.button("📧 Run SDR Agent"):
+        with st.spinner("Running SDR Agent..."):
+            try:
+                from app.agents.sdr_agent import run_sdr_agent
+                run_sdr_agent()
+                st.success("SDR Agent completed!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    # Run Sales Agent
+    if st.button("💼 Run Sales Agent"):
+        with st.spinner("Running Sales Agent..."):
+            try:
+                from app.agents.sales_agent import run_sales_agent
+                run_sales_agent()
+                st.success("Sales Agent completed!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    # Run Negotiation Agent
+    if st.button("🤝 Run Negotiation Agent"):
+        with st.spinner("Running Negotiation Agent..."):
+            try:
+                from app.agents.negotiation_agent import run_negotiation_agent
+                run_negotiation_agent()
+                st.success("Negotiation Agent completed!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    # Run Finance Agent
+    if st.button("💰 Run Finance Agent"):
+        with st.spinner("Running Finance Agent..."):
+            try:
+                from app.agents.finance_agent import run_finance_agent
+                run_finance_agent()
+                st.success("Finance Agent completed!")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 # Title
 st.title("RIVO CRM Dashboard")

@@ -17,6 +17,7 @@ from app.schemas.invoices import (
 )
 from app.schemas.leads import LeadCreateRequest, LeadDraftUpdateRequest, LeadResponse, LeadStatusUpdateRequest
 from app.schemas.prompts import PromptUpdateRequest, PromptUpdateResponse
+from app.schemas.rag import RagIngestRequest, RagIngestResponse, RagQueryRequest, RagQueryResponse
 from app.schemas.runs import (
     ManualOverrideRequest,
     RunListItem,
@@ -50,6 +51,10 @@ __all__ = [
     "Pagination",
     "PromptUpdateRequest",
     "PromptUpdateResponse",
+    "RagIngestRequest",
+    "RagIngestResponse",
+    "RagQueryRequest",
+    "RagQueryResponse",
     "RefreshRequest",
     "RunListItem",
     "RunResponse",
