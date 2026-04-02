@@ -1,8 +1,21 @@
-"""Canonical enum values for the tenant-aware schema."""
+"""Canonical enum values for the tenant-aware schema.
+
+⚠️ DEPRECATED: This module is NOT connected to Alembic migrations.
+Use app/core/enums.py instead for production code.
+"""
 
 from __future__ import annotations
 
 import enum
+import warnings
+
+# Emit deprecation warning when this module is imported
+warnings.warn(
+    "app.models.enums is deprecated and not connected to Alembic. "
+    "Use app.core.enums instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 class UserRole(str, enum.Enum):

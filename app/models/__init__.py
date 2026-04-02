@@ -1,4 +1,21 @@
-"""Modular SQLAlchemy model package for tenant-aware schema."""
+"""Modular SQLAlchemy model package for tenant-aware schema.
+
+⚠️ DEPRECATED: This package is NOT connected to Alembic migrations.
+Use app/database/models.py instead for production code.
+
+This module exists for future migration to modern SQLAlchemy style
+(mapped_column) but is currently disconnected from the runtime system.
+"""
+
+import warnings
+
+# Emit deprecation warning when this module is imported
+warnings.warn(
+    "app.models is deprecated and not connected to Alembic. "
+    "Use app.database.models instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from app.models.agent_run import AgentRun
 from app.models.base import Base

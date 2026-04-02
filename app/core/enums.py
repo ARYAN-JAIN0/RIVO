@@ -81,9 +81,9 @@ class ReviewStatus(Enum):
     APPROVED = "Approved"
     REJECTED = "Rejected"
     AUTO_APPROVED = "Auto-Approved"
-    STRUCTURAL_FAILED = "STRUCTURAL_FAILED"
-    BLOCKED = "BLOCKED"
-    SKIPPED = "SKIPPED"
+    STRUCTURAL_FAILED = "Structural Failed"
+    BLOCKED = "Blocked"
+    SKIPPED = "Skipped"
 
 
 # Convenience accessors for common status values

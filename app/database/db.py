@@ -71,7 +71,26 @@ def get_db() -> Generator[Session, None, None]:
 
 @contextmanager
 def get_db_session() -> Generator[Session, None, None]:
-    """Context-manager wrapper for safe DB session lifecycle."""
+    """Context-manager wrapper for safe DB session lifecycle.
+    
+    IMPORTANT: This context manager does NOT auto-commit.
+    You MUST explicitly call session.commit() to persist changes.
+    Use session.rollback() in except blocks for error handling.
+    
+    Usage:
+        with get_db_session() as session:
+            session.add(obj)
+            session.commit()  # REQUIRED
+    
+    Or with error handling:
+        with get_db_session() as session:
+            try:
+                session.add(obj)
+                session.commit()
+            except SQLAlchemyError:
+                session.rollback()
+                raise
+    """
     db = SessionLocal()
     try:
         yield db

@@ -32,6 +32,7 @@ from app.database.db_handler import (
     fetch_pending_dunning_reviews,
     mark_dunning_decision
 )
+from app.core.enums import ReviewStatus
 from app.core.logging_config import configure_logging
 from app.services.opportunity_scoring_service import OpportunityScoringService
 
@@ -153,7 +154,7 @@ with tab1:
                     with col2:
                         # Status badge
                         review_status = row.get("review_status", "Unknown")
-                        if review_status == "STRUCTURAL_FAILED":
+                        if review_status == ReviewStatus.STRUCTURAL_FAILED.value:
                             st.error("❌ Validation Failed")
                         else:
                             score = row.get("confidence_score", 0) or 0

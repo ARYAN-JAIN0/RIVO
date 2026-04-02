@@ -333,7 +333,7 @@ class IngestionPipeline:
                 "rag.ingestion.no_text_extracted",
                 extra={
                     "event": "rag.ingestion.no_text_extracted",
-                    "filename": filename,
+                    "source_filename": filename,
                 },
             )
             return []

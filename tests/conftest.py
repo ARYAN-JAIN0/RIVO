@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.database.db_handler as db_handler
+import app.database.db as db_module
 from app.database.models import Base
 
 
@@ -29,5 +30,7 @@ def isolated_session_factory(monkeypatch):
         finally:
             session.close()
 
+    # Patch BOTH module references to ensure complete test isolation
     monkeypatch.setattr(db_handler, "get_db_session", _get_db_session)
+    monkeypatch.setattr(db_module, "get_db_session", _get_db_session)
     return TestingSessionLocal

@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # Threshold constants - clarified purpose
 REVIEW_QUEUE_THRESHOLD = 85  # Minimum score to enter review queue (not used for auto-send)
 AUTO_SEND_THRESHOLD = 85    # Score for immediate send without human review
-SIGNAL_THRESHOLD = 30        # Minimum signal score to proceed with email generation
+SIGNAL_THRESHOLD = 60        # Minimum signal score to proceed with email generation
 PROMPT_VERSION = "sdr-v2.0"
 
 # Legacy alias for backwards compatibility
